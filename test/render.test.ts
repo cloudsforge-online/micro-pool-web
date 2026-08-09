@@ -347,8 +347,10 @@ test('an unknown address renders the shell under a not-found page, with a way ba
 })
 
 test('there is no sign-in anywhere on this site', async () => {
-  // micro-pool takes no bearer token on any route and there is no estate account behind a mining
-  // address. A "Sign in" here would suggest that signing in would show the reader something.
+  // micro-pool takes no bearer token on any route this bundle calls and there is no estate account
+  // behind a mining address. A "Sign in" here would suggest that signing in would show the reader
+  // something; the one route an estate session unlocks at micro-pool is the browser-mining ticket,
+  // and the page that spends it is micro-hub-web's `/mine` rather than anything on this surface.
   for (const url of [
     'https://pool.cloudsforge.online/',
     'https://pool.cloudsforge.online/workers/ltc/ltc1qexampleaddress',

@@ -5,17 +5,30 @@
  * THERE IS NO AUTHENTICATION IN THIS BUNDLE, AND THAT IS A DECISION RATHER THAN AN OMISSION.
  *
  * The template's `@cloudsforge/auth` wiring, the access and refresh tokens, the `localStorage`
- * probe, the single-flight refresh and the `AuthProvider` are all absent. `micro-pool` has no
- * `@cloudsforge/auth` either, and its `src/server.ts` says why at length:
+ * probe, the single-flight refresh and the `AuthProvider` are all absent. Every route this module
+ * calls is one `micro-pool` answers for anybody, and its `src/server.ts` says why at length:
  *
  *     "The only identity a miner has at this service is the stratum username they typed into their
  *     own firmware — there is no estate account behind it, and there cannot be, because the whole
  *     point is that a stranger with an ASIC can point it here and be paid. Gating the share
  *     history behind an estate login would make it checkable by nobody."
  *
- * A bundle that sent a bearer token to that service would be sending a credential to a surface
- * that has no use for one, and it would put a token in a page whose entire audience is people
- * without estate accounts. So there is nothing here to steal and nothing here to expire.
+ * ── THE SPLIT IS PER ROUTE, NOT PER SERVICE, AND IT DID NOT USED TO BE ────────────────────────
+ *
+ * micro-pool now imports `@cloudsforge/auth`, which it did not when this file was written, and one
+ * route out of its eight uses it: `POST /v1/pool/ticket` verifies an estate access token and mints
+ * the single-use ticket a browser spends on the WebSocket mining transport (micro-org#289). It is
+ * micro-hub-web's `/mine` that calls it, because that surface has a session to spend on it.
+ *
+ * THIS bundle does not call it and must not. Doing so would mean building a sign-in, a token store
+ * and a refresh on a public reference surface whose audience is people without estate accounts —
+ * and browser mining already has a home. `test/pool-contract.test.ts` reads micro-pool's route
+ * table one route at a time and fails if a route this bundle calls grows an authority check, or if
+ * a second credentialled route appears that nobody has decided about.
+ *
+ * A bundle that sent a bearer token to the routes below would be sending a credential to handlers
+ * that read none, and it would put a token in a page nobody signs in to. So there is nothing here
+ * to steal and nothing here to expire.
  *
  * status-web made the same call for a different reason and its CI greps for the tokens by name.
  * This repository's `ci.yml` carries the same grep, so the absence is enforced rather than merely

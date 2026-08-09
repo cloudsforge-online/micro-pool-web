@@ -9,12 +9,19 @@
  * `account.signedIn` is false (`ui/packages/ui/src/index.tsx`). On this surface that button is not
  * a dead end, it is a category error:
  *
- *   - micro-pool takes NO BEARER TOKEN on any route (`pool/src/server.ts`), so there is nothing an
- *     account could unlock here. Every page is public to everybody, deliberately — 36 §6 requires
- *     that a miner can check their own share history, and the only identity they have is the
- *     stratum username they typed into their own firmware.
+ *   - micro-pool takes NO BEARER TOKEN on any route THIS SURFACE calls (`pool/src/server.ts`), so
+ *     there is nothing an account could unlock on any page here. Every one of them is public to
+ *     everybody, deliberately — 36 §6 requires that a miner can check their own share history, and
+ *     the only identity they have is the stratum username they typed into their own firmware.
  *   - There is no estate account behind a mining address and there cannot be. The whole point is
  *     that a stranger with an ASIC can point it here without asking anybody for anything.
+ *
+ * The service DOES have one route an estate account unlocks, and it is worth naming so that nobody
+ * reaches for the bar the day they find it: `POST /v1/pool/ticket` mints the ticket a browser needs
+ * to mine over the WebSocket transport (micro-org#289). The page that spends it is micro-hub-web's
+ * `/mine`, which is behind the estate session already. Signing in HERE would still show this
+ * reader nothing, because nothing on this surface calls that route — the argument above is
+ * unchanged, and the sentence it rests on is now "no route this surface calls", not "no route".
  *
  * So a "Sign in" on this page would suggest that signing in would show the reader something. It
  * would not; there is nothing to sign in to. `test/shared-chrome.test.ts` pins that reason, and

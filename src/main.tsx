@@ -9,12 +9,13 @@
  * ── There is no `bootstrapSession()` here, and its absence is the point ────────────────────────
  *
  * Every other frontend in the estate awaits an SSO hand-off before mounting. This one has nothing to
- * hand off: micro-pool reads no bearer token on any route (`pool/src/server.ts`), this bundle has no
- * `lib/auth.tsx`, and there is no estate account behind a mining address. A session bootstrap here
- * would be a network round trip against the identity service, on every page load, whose result
- * nothing in this bundle could read — and it would put a "Sign in" affordance in front of a reader
- * whose entire relationship with this service is a TCP connection from an ASIC. See the header of
- * src/components/shell.tsx.
+ * hand off: micro-pool reads no bearer token on any route this bundle calls (`pool/src/server.ts` —
+ * only its browser-mining ticket route does, and micro-hub-web's `/mine` is what calls that), this
+ * bundle has no `lib/auth.tsx`, and there is no estate account behind a mining address. A session
+ * bootstrap here would be a network round trip against the identity service, on every page load,
+ * whose result nothing in this bundle could read — and it would put a "Sign in" affordance in front
+ * of a reader whose entire relationship with this service is a TCP connection from an ASIC. See the
+ * header of src/components/shell.tsx.
  */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'

@@ -58,8 +58,9 @@ test('query values are encoded, and an undefined one is omitted rather than sent
 test('NO REQUEST EVER CARRIES A CREDENTIAL', async () => {
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   // This bundle has no sign-in, no token store and no refresh, and micro-pool takes no bearer token
-  // on any route. A header added here later would be a credential handed to a service with no use
-  // for one, in a page whose entire audience is people without estate accounts.
+  // on any route it calls — its one credentialled route mints browser-mining tickets and belongs to
+  // micro-hub-web's `/mine`. A header added here later would be a credential handed to handlers
+  // that read none, in a page whose entire audience is people without estate accounts.
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   const stub = installFetch(() => json(200, poolStatus()))
   try {
