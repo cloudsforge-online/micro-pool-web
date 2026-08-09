@@ -1,0 +1,588 @@
+/*
+ * The Mining Pool's own styles, on top of @cloudsforge/ui.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * EVERY CUSTOM PROPERTY REFERENCED HERE IS DEFINED IN `ui/packages/ui/src/tokens.css`, AND A TEST
+ * PROVES IT.
+ *
+ * `test/tokens.test.ts` reads the sibling design system, collects every `--cf-*` this file names,
+ * and fails on one that tokens.css does not declare. That is not a style preference: an undefined
+ * custom property makes the whole declaration invalid at computed-value time, so
+ * `border: 1px solid var(--cf-undefined)` does not fall back to a sensible border — it drops the
+ * border entirely, silently, in a file that looks correct.
+ *
+ * The estate has shipped exactly that. `micro-mint-web/src/styles.css` names ten properties that do
+ * not exist — `--cf-border`, `--cf-radius-md`, `--cf-space-1` through `--cf-space-5` and
+ * `--cf-status-good`/`-warn`/`-crit` — across 72 declarations. The names that DO exist:
+ *
+ *   borders   --cf-line, --cf-line-strong             (never --cf-border)
+ *   states    --cf-good-*, --cf-warn-*, --cf-critical-*, --cf-success, --cf-danger
+ *   radii     --cf-radius-sm, --cf-radius, --cf-radius-lg   (never --cf-radius-md)
+ *   spacing   --cf-space-3xs … --cf-space-3xl         (never --cf-space-1..5)
+ *   type      --cf-font-sans, --cf-font-mono, --cf-font-display  (never --cf-font)
+ *
+ * MARK STEP AND TEXT STEP ARE DIFFERENT TOKENS. `--cf-accent` and `--cf-warn` are validated at
+ * 3:1 — the floor for a border, a fill or a stroke; `--cf-accent-text` and `--cf-warn-text` are the
+ * 4.5:1 step for type. Every `color:` below names a `-text` step; every `border-color` keeps the
+ * mark step.
+ *
+ * A `var(--undefined, #hex)` is not a repair either — it is a hard-coded colour wearing a token's
+ * clothes, and it stops following the substrate the moment somebody switches the ash ramp. There is
+ * one literal colour in this file and it is `transparent`.
+ *
+ * The same rule applies to CLASS names, and `test/tokens.test.ts` checks those too: a `cf-` class
+ * that does not exist upstream fails exactly as quietly as a property that does not.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+
+/* ---- the base layer --------------------------------------------------- */
+
+/*
+ * The tokens are DELIVERED by tokens.css and have to be CONSUMED here.
+ *
+ * `index.html` sets `data-cf-product`/`data-cf-substrate` on `<html>` and tokens.css resolves
+ * `--cf-bg` on `:root`, but if nothing in this file ever reads those properties on `body` the
+ * document falls all the way through to the UA stylesheet — a transparent background, Times, and an
+ * 8px margin. That defect is invisible to `curl` (the surface still returns 200) and invisible to a
+ * mocked DOM test (happy-dom neither loads the stylesheet nor cascades it), and glaring to the first
+ * person who opens the page in a browser. Explorer-web shipped it once.
+ *
+ * `color-scheme` is deliberately NOT declared here. It is an inherited property, `index.html`
+ * carries `data-cf-scheme="auto"`, and tokens.css sets it on `<html>` for the whole estate; a
+ * declaration on `body` would beat the inherited one for the entire page and leave a reader on a
+ * light system with the light palette and dark native controls — the `<select>` on this page and
+ * the paste box on the workers page among them.
+ */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--cf-bg);
+  color: var(--cf-fg);
+  font-family: var(--cf-font-sans);
+}
+
+/* ---- the frame -------------------------------------------------------- */
+
+/*
+ * A LOCAL header, because `CloudsForgeBar` cannot be mounted from this surface. The argument is in
+ * full at the top of src/components/shell.tsx: the shared bar always renders an account control, and
+ * there is nothing on this site to sign in to. `--cf-bar-h` is still the height, so this row lines
+ * up with every other surface's chrome rather than being a few pixels of its own.
+ */
+.pl-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--cf-bg);
+  border-bottom: 1px solid var(--cf-line);
+}
+
+.pl-head__inner {
+  max-width: var(--cf-max-w);
+  margin: 0 auto;
+  min-height: var(--cf-bar-h);
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-sm);
+  padding: 0 var(--cf-space-xl);
+}
+
+.pl-head__logo {
+  display: inline-flex;
+  align-items: center;
+  color: var(--cf-fg);
+  text-decoration: none;
+}
+
+.pl-head__sep {
+  width: 1px;
+  height: var(--cf-text-lg);
+  background: var(--cf-line-strong);
+}
+
+.pl-head__name {
+  font-family: var(--cf-font-display);
+  font-size: var(--cf-text-md);
+  letter-spacing: var(--cf-tracking-wide);
+  color: var(--cf-fg);
+  white-space: nowrap;
+}
+
+.pl-nav {
+  display: flex;
+  gap: var(--cf-space-2xs);
+  margin-left: auto;
+  overflow-x: auto;
+}
+
+.pl-nav__link {
+  padding: var(--cf-space-sm) var(--cf-space-sm);
+  color: var(--cf-fg-dim);
+  text-decoration: none;
+  font-size: var(--cf-text-md);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.pl-nav__link:hover {
+  color: var(--cf-fg);
+}
+
+.pl-nav__link--current {
+  color: var(--cf-fg);
+  border-bottom-color: var(--cf-accent);
+}
+
+.pl-main {
+  max-width: var(--cf-max-w);
+  margin: 0 auto;
+  padding: var(--cf-space-2xl) var(--cf-space-xl) var(--cf-space-3xl);
+  color: var(--cf-fg);
+}
+
+/* ---- the page --------------------------------------------------------- */
+
+.pl-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-xl);
+}
+
+.pl-title {
+  margin: 0;
+  font-family: var(--cf-font-display);
+  font-size: var(--cf-text-3xl);
+  line-height: var(--cf-leading-tight);
+  letter-spacing: var(--cf-tracking-tight);
+}
+
+.pl-lede {
+  margin: 0;
+  max-width: var(--cf-measure);
+  font-size: var(--cf-text-lg);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+.pl-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-md);
+}
+
+.pl-h2 {
+  margin: 0;
+  font-family: var(--cf-font-display);
+  font-size: var(--cf-text-xl);
+  line-height: var(--cf-leading-snug);
+}
+
+.pl-h3 {
+  margin: 0;
+  font-size: var(--cf-text-lg);
+  line-height: var(--cf-leading-snug);
+}
+
+.pl-hint {
+  margin: 0;
+  max-width: var(--cf-measure);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+.pl-dim {
+  color: var(--cf-fg-mute);
+}
+
+.pl-links {
+  margin: 0;
+  padding-left: var(--cf-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.pl-cta {
+  margin: 0;
+}
+
+/* ---- the two standing notices ----------------------------------------- */
+
+/*
+ * THE PAYOUT STATEMENT.
+ *
+ * It is loud on purpose and it is the first thing inside `<main>` on every route. The severity ramp
+ * used is `--cf-warn-*` rather than `--cf-critical-*`: nothing is broken and no action is urgent —
+ * this is a standing property of the service that a reader must not be able to skim past. Critical
+ * is reserved for something that has just gone wrong, and spending it here would leave nothing left
+ * to say it with.
+ */
+.pl-notpaid {
+  border: 1px solid var(--cf-warn-edge);
+  border-left-width: var(--cf-space-3xs);
+  border-radius: var(--cf-radius);
+  background: var(--cf-warn-wash);
+  padding: var(--cf-space-md) var(--cf-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-2xs);
+}
+
+.pl-notpaid__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cf-space-xs);
+  margin: 0;
+  font-size: var(--cf-text-lg);
+  color: var(--cf-warn-text);
+}
+
+.pl-notpaid__icon {
+  color: var(--cf-warn-text);
+  line-height: 1;
+}
+
+.pl-notpaid__body {
+  margin: 0;
+  max-width: var(--cf-measure);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg);
+}
+
+.pl-note {
+  display: flex;
+  gap: var(--cf-space-xs);
+  align-items: baseline;
+  margin: 0;
+  padding: var(--cf-space-sm) var(--cf-space-md);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius-sm);
+  max-width: var(--cf-measure);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+.pl-note--warn {
+  border-color: var(--cf-warn-edge);
+  color: var(--cf-fg);
+}
+
+.pl-note__icon {
+  color: var(--cf-warn-text);
+  line-height: 1;
+}
+
+/*
+ * A sentence about something the reader must not act on. Used for a stratum hostname that could not
+ * be derived: it is styled as text rather than as a panel, because it sits inside a definition list
+ * where the reader is scanning for a value and a box would break that scan.
+ */
+.pl-warn {
+  color: var(--cf-warn-text);
+}
+
+/* ---- the three states ------------------------------------------------- */
+
+.pl-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-2xl) var(--cf-space-xl);
+  border-radius: var(--cf-radius-lg);
+  text-align: center;
+}
+
+.pl-state__icon {
+  font-size: var(--cf-text-2xl);
+  line-height: 1;
+}
+
+.pl-state__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.pl-state__hint,
+.pl-state__meta {
+  margin: 0;
+  max-width: var(--cf-measure);
+  font-size: var(--cf-text-md);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+.pl-state__action {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--cf-space-sm);
+  margin-top: var(--cf-space-2xs);
+}
+
+/*
+ * EMPTY IS DASHED AND QUIET, FAILED IS SOLID AND CRITICAL, and the difference is the whole point of
+ * having three states rather than one. On 2026-08-09 every panel on this site is empty — nothing has
+ * ever mined here — so "empty" is the ordinary resting appearance of this application and must not
+ * look like a fault. See the header of src/components/states.tsx.
+ */
+.pl-state--empty {
+  border: 1px dashed var(--cf-line);
+  color: var(--cf-fg-dim);
+}
+
+.pl-state--failed {
+  border: 1px solid var(--cf-critical-edge);
+  background: var(--cf-critical-wash);
+}
+
+.pl-state--failed .pl-state__icon {
+  color: var(--cf-critical-text);
+}
+
+.pl-state--loading {
+  color: var(--cf-fg-dim);
+}
+
+/*
+ * The spinner animates only for readers who have not asked it not to.
+ *
+ * `prefers-reduced-motion` is not decoration here: a spinner is the one element on this site that is
+ * on screen precisely when somebody is waiting and watching it. The reduced form is a static ring,
+ * which still says "in progress" without a moving target.
+ */
+.pl-spinner {
+  width: var(--cf-text-xl);
+  height: var(--cf-text-xl);
+  border: 2px solid var(--cf-line);
+  border-top-color: var(--cf-accent);
+  border-radius: 50%;
+  animation: pl-spin 900ms linear infinite;
+}
+
+@keyframes pl-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-spinner {
+    animation: none;
+  }
+}
+
+/* The request id, on its own so it can be selected in one gesture and pasted into a support form. */
+.pl-reqid {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg);
+}
+
+/* ---- panels and values ------------------------------------------------ */
+
+.pl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--cf-space-md);
+}
+
+.pl-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-lg);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius);
+  background: var(--cf-bg-raised);
+}
+
+.pl-status {
+  margin: 0;
+}
+
+/* A key/value list. Two columns where there is room, stacked where there is not. */
+.pl-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--cf-space-2xs) var(--cf-space-md);
+  margin: 0;
+}
+
+.pl-kv__key {
+  color: var(--cf-fg-dim);
+  font-size: var(--cf-text-sm);
+}
+
+.pl-kv__val {
+  margin: 0;
+  line-height: var(--cf-leading);
+}
+
+@media (max-width: 40rem) {
+  .pl-kv {
+    grid-template-columns: 1fr;
+    gap: var(--cf-space-3xs);
+  }
+
+  .pl-kv__val {
+    margin-bottom: var(--cf-space-xs);
+  }
+}
+
+/* A term and an explanation. Prose, so it is a stack rather than a grid at every width. */
+.pl-deflist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-md);
+  margin: 0;
+}
+
+.pl-deflist__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-3xs);
+  padding-left: var(--cf-space-md);
+  border-left: 2px solid var(--cf-line);
+}
+
+.pl-deflist__term {
+  font-weight: 600;
+}
+
+.pl-deflist__desc {
+  margin: 0;
+  max-width: var(--cf-measure);
+  line-height: var(--cf-leading);
+  color: var(--cf-fg-dim);
+}
+
+.pl-chainpick {
+  display: flex;
+  align-items: center;
+  gap: var(--cf-space-xs);
+  margin: 0;
+}
+
+.pl-chainpick__label {
+  color: var(--cf-fg-dim);
+  font-size: var(--cf-text-sm);
+}
+
+/*
+ * The string a reader is going to copy into their miner. `user-select: all` makes it one click,
+ * `overflow-wrap` stops a long hostname from widening the whole card on a phone, and the monospace
+ * token is what makes `l` and `1` distinguishable in a hostname somebody is retyping by hand.
+ */
+.pl-code {
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-sm);
+  padding: var(--cf-space-3xs) var(--cf-space-2xs);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius-sm);
+  background: var(--cf-bg-sunken);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.pl-pre {
+  margin: 0;
+  padding: var(--cf-space-md);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius-sm);
+  background: var(--cf-bg-sunken);
+  font-family: var(--cf-font-mono);
+  font-size: var(--cf-text-sm);
+  overflow-x: auto;
+}
+
+/* ---- the lookup form -------------------------------------------------- */
+
+.pl-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-sm);
+  padding: var(--cf-space-lg);
+  border: 1px solid var(--cf-line);
+  border-radius: var(--cf-radius);
+  background: var(--cf-bg-raised);
+}
+
+.pl-form__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-3xs);
+  margin: 0;
+}
+
+.pl-form__label {
+  font-size: var(--cf-text-sm);
+  color: var(--cf-fg-dim);
+}
+
+/*
+ * The refusal a reader gets for a name this pool could never have stored. `--cf-critical-text`
+ * rather than `--cf-warn-text`: this one blocks the thing they just asked for, and it is announced
+ * by `role="alert"` at the same moment, so the colour and the announcement should agree.
+ */
+.pl-form__problem {
+  margin: 0;
+  max-width: var(--cf-measure);
+  color: var(--cf-critical-text);
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading);
+}
+
+/* ---- tables ----------------------------------------------------------- */
+
+/*
+ * `display: block` with `overflow-x: auto` on the TABLE itself, so a share history scrolls sideways
+ * on a phone instead of forcing the whole document to. A table is the right element for this data —
+ * it is genuinely tabular and a screen reader announces the column when reading a cell — so it is
+ * not swapped for a stack of cards at narrow widths, which would lose exactly that.
+ */
+.pl-table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cf-text-sm);
+}
+
+.pl-table th,
+.pl-table td {
+  text-align: left;
+  padding: var(--cf-space-xs) var(--cf-space-sm);
+  border-bottom: 1px solid var(--cf-line);
+  white-space: nowrap;
+}
+
+.pl-table thead th {
+  color: var(--cf-fg-dim);
+  font-weight: 600;
+  border-bottom-color: var(--cf-line-strong);
+}
+
+.pl-table tbody th {
+  font-weight: 400;
+}
+
+/* The node's own detail string beside a verdict. Allowed to wrap: it is a sentence, not a value. */
+.pl-detail {
+  white-space: normal;
+}
+
+/*
+ * "— solved a block", beside a share whose achieved difficulty met the network's.
+ *
+ * Deliberately styled as a NOTE and not as a reward: no fill, no badge, no currency. It marks work,
+ * and what that work was worth to the miner who did it is a question this pool cannot answer.
+ */
+.pl-flag {
+  color: var(--cf-good-text);
+}
