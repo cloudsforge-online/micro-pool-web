@@ -143,66 +143,6 @@ body {
   color: var(--cf-fg);
 }
 
-/*
- * A LOCAL footer, for the reason given in shell.tsx: the shared `CloudsForgeFooter` throws on an
- * unknown `SurfaceKey` and there is no `pool` row, and its legal links resolve against a `hosts.site`
- * that `surfaceUrls` does not override. It is styled to sit quietly rather than to imitate the
- * shared one, because a near-copy invites somebody to "finish" it instead of deleting it when the
- * registry row lands.
- */
-.pl-foot {
-  border-top: 1px solid var(--cf-line);
-  margin-top: var(--cf-space-3xl);
-}
-
-.pl-foot__inner {
-  max-width: var(--cf-max-w);
-  margin: 0 auto;
-  padding: var(--cf-space-xl);
-  display: flex;
-  flex-direction: column;
-  gap: var(--cf-space-md);
-}
-
-.pl-foot__links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cf-space-md);
-}
-
-.pl-foot__link {
-  color: var(--cf-fg-dim);
-  text-decoration: none;
-  font-size: var(--cf-text-sm);
-}
-
-.pl-foot__link:hover {
-  color: var(--cf-fg);
-  text-decoration: underline;
-}
-
-.pl-foot__note,
-.pl-foot__here {
-  margin: 0;
-  color: var(--cf-fg-mute);
-  font-size: var(--cf-text-sm);
-  max-width: var(--cf-measure);
-  line-height: var(--cf-leading);
-}
-
-.pl-foot__base {
-  display: flex;
-  align-items: center;
-  gap: var(--cf-space-sm);
-  margin: 0;
-}
-
-.pl-foot__brand {
-  display: inline-flex;
-  align-items: center;
-  color: var(--cf-fg-dim);
-}
-
 /* ---- the page --------------------------------------------------------- */
 
 .pl-page {

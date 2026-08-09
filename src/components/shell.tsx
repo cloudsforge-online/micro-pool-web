@@ -2,51 +2,61 @@
  * The chrome: the logo, the surface name, the navigation, the page, and the two standing notices.
  *
  * ════════════════════════════════════════════════════════════════════════════════════════════════
- * NEITHER `CloudsForgeBar` NOR `CloudsForgeFooter` IS MOUNTED HERE, AND BOTH ABSENCES ARE FORCED
- * BY THE SAME MISSING REGISTRY ROW RATHER THAN CHOSEN.
+ * `CloudsForgeBar` IS NOT MOUNTED HERE, AND THE REASON IS ABOUT THIS PRODUCT RATHER THAN ABOUT THE
+ * REGISTRY.
  *
- * `CloudsForgeBar` — `status-web/src/components/shell.tsx` already argues the general case: the bar
- * always renders an account control, and `AccountMenu` shows a "Sign in" button whenever
- * `account.signedIn` is false. On this surface that button is worse than a dead end, it is a
- * category error. The only identity a miner has here is the stratum username they typed into their
- * own firmware; micro-pool takes no bearer token on any route and there is no estate account behind
- * a mining address (`pool/src/server.ts`). Offering an estate login to somebody whose whole
- * relationship with this service is a TCP connection from an ASIC suggests that signing in would
- * show them something. It would not. There is nothing to sign in to.
+ * The bar always renders an account control, and `AccountMenu` shows a "Sign in" button whenever
+ * `account.signedIn` is false (`ui/packages/ui/src/index.tsx`). On this surface that button is not
+ * a dead end, it is a category error:
  *
- * `CloudsForgeFooter` — this one is not a preference and cannot be worked around from here. Two
- * hard blockers, both read off `ui/packages/ui/src/index.tsx`:
+ *   - micro-pool takes NO BEARER TOKEN on any route (`pool/src/server.ts`), so there is nothing an
+ *     account could unlock here. Every page is public to everybody, deliberately — 36 §6 requires
+ *     that a miner can check their own share history, and the only identity they have is the
+ *     stratum username they typed into their own firmware.
+ *   - There is no estate account behind a mining address and there cannot be. The whole point is
+ *     that a stranger with an ASIC can point it here without asking anybody for anything.
  *
- *   1. `current: SurfaceKey` is REQUIRED, and `surface(current)` THROWS on an unknown key — the
- *      component's own comment says that is deliberate, "a typo must not render a footer at all".
- *      There is no `pool` key (see the header of `src/lib/hosts.ts`), so there is no honest value to
- *      pass. `'network'` would render the identity line "Forge Network — …" and mark the Forge
- *      Network link `aria-current="page"`, which claims this page is a surface it is not.
- *   2. The three legal links are composed from `hosts.site` read INSIDE the component and are NOT
- *      covered by the `surfaceUrls` override, which only reaches the surface columns. Served at
- *      `pool.<apex>`, the registry cannot strip an unknown first label, so `hosts.site` resolves to
- *      `https://pool.<apex>` and all three legal links would point at this bundle's own 404 page.
- *      status-web's shell records the estate paying for exactly this class of defect once already —
- *      two footer links that had been 404s since they were written.
+ * So a "Sign in" on this page would suggest that signing in would show the reader something. It
+ * would not; there is nothing to sign in to. `test/shared-chrome.test.ts` pins that reason, and
+ * `test/render.test.ts` asserts no page here offers the words at all.
  *
- * So the footer below is local, small, and built from `FOOTER_LEGAL_LINKS` — the shared constant,
- * so the PATHS cannot drift from micro-site's routes — resolved against the locally corrected apex.
- * `test/shared-chrome.test.ts` asserts that this file mounts the shared skip link, main region and
- * cookie banner, and pins the two absences to the registry gap so that the day a `pool` row lands is
- * a day a test tells somebody to delete this footer.
+ * ── FOR WHOEVER MOUNTS IT LATER: THE DEPLOY IS ONLY HALF READY ────────────────────────────────
+ *
+ * `deploy/gateway/dynamic/policy.yml` now carries `https://pool{{ env "CF_WEB_SUFFIX" }}` in its
+ * `cf-cors` origin list, so a browser on this surface may already call the identity API. But
+ * `IDENTITY_HANDOFF_ORIGINS` in `deploy/compose/docker-compose.estate.yml` deliberately does NOT
+ * list `pool`, so the handoff that completes a sign-in would be refused and the reader would be
+ * bounced back signed out. Mounting the bar is therefore a deploy change as well as this one, and
+ * the product argument above has to be answered first regardless.
+ *
+ * ── `CloudsForgeFooter` IS MOUNTED, AND THAT IS NEW ───────────────────────────────────────────
+ *
+ * It was not, for two mechanical reasons that are both now gone: `surface('pool')` used to throw
+ * because the registry had no `pool` row, and `hosts.site` — composed INSIDE the component, where
+ * the `surfaceUrls` override cannot reach — resolved to this bundle's own origin because
+ * `cloudsforgeHosts()` could not strip an unknown first label, which would have pointed all three
+ * legal links at this surface's 404 page. micro-ui#3 landed the row, `pool` joined `KNOWN_SUBS`,
+ * and the local footer and the local apex correction that fed it are both deleted.
  * ════════════════════════════════════════════════════════════════════════════════════════════════
  */
-import { CloudsForgeLogo, CookieBanner, FOOTER_LEGAL_LINKS, MainRegion, SkipLink } from '@cloudsforge/ui'
-import { applyHead, DEFAULT_OG_IMAGE, HTML_LANG } from '@cloudsforge/ui/seo'
+import { CloudsForgeFooter, CloudsForgeLogo, CookieBanner, MainRegion, SkipLink } from '@cloudsforge/ui'
+import { applyHead, surfaceMeta } from '@cloudsforge/ui/seo'
 import { useEffect } from 'react'
+import { surface } from '@cloudsforge/ui/surfaces'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { hosts, placementIsKnown, SURFACE_DESCRIPTION } from '../lib/hosts.ts'
+import { hosts, placementIsKnown, PRODUCT, SURFACE_DESCRIPTION } from '../lib/hosts.ts'
 import { NAV, ROUTES } from '../lib/routes.ts'
 import { usePoolStatus } from '../lib/status.tsx'
 import { NotPaidNotice, UnregisteredNotice } from './notices.tsx'
 
-/** The surface's own name. There is no registry row to read it from; see the header above. */
-export const SURFACE_NAME = 'Mining Pool'
+/**
+ * The surface's own name, READ OFF THE REGISTRY rather than typed here.
+ *
+ * It used to be a literal, because there was no row to read. There is now, and the header of a page
+ * disagreeing with the name in the product switcher and in every footer on the estate is exactly
+ * the drift a registry exists to stop.
+ */
+export const SURFACE_NAME = surface(PRODUCT).name
 
 export function AppShell() {
   const { payoutsImplemented } = usePoolStatus()
@@ -110,48 +120,33 @@ export function AppShell() {
         <Outlet />
       </MainRegion>
 
-      <footer className="pl-foot" role="contentinfo" aria-label="CloudsForge">
-        <div className="pl-foot__inner">
-          <nav className="pl-foot__links" aria-label="Legal">
-            {FOOTER_LEGAL_LINKS.map((link) => (
-              // `estate.site` is the CORRECTED apex — see `correctedHosts` in src/lib/hosts.ts.
-              // The paths come from the shared constant so they cannot drift from micro-site's own
-              // route table, which is the half of this that has been wrong in the estate before.
-              <a key={link.path} className="pl-foot__link" href={`${estate.site}${link.path}`}>
-                {link.label}
-              </a>
-            ))}
-            <a className="pl-foot__link" href={estate.network}>
-              Forge Network
-            </a>
-            <a className="pl-foot__link" href={estate.status}>
-              Status
-            </a>
-          </nav>
-          {/*
-            DERIVED, LIKE EVERY OTHER SENTENCE ON THIS SITE THAT SAYS NOTHING SETTLES.
+      {/*
+        THE SHARED FOOTER, WITH THIS SURFACE'S ONE SENTENCE IN THE PLACE PROVIDED FOR IT.
 
-            A footer is exactly where a claim like this survives its own truth: it is on every page,
-            nobody reads it twice, and it would go on saying "nothing is settled" for as long as it
-            took somebody to remember this file existed. The clause about settlement branches on the
-            service's answer; the clause about who owns the addresses and about this page not being
-            an offer is true either way and does not.
-          */}
-          <p className="pl-foot__note">
+        Every link in its columns is derived from the registry and its three legal links are
+        micro-site's real routes — `/terms`, `/privacy` and `/risk` all resolve in `site/src/app.tsx`,
+        checked rather than assumed. The local footer this replaces hand-composed the same links
+        against a locally corrected apex, which was the only thing it was ever for.
+
+        `note` carries the claim that was load-bearing in the local one, and it stays DERIVED: the
+        settlement clause branches on the service's own `payoutsImplemented`, because a footer is
+        exactly where a claim survives its own truth — it is on every page, nobody reads it twice,
+        and it would go on saying "nothing is settled" for as long as it took somebody to remember
+        this file existed. The rest is true either way and does not branch.
+
+        No `account` is passed, which hides every `adminOnly` surface. That is the correct default
+        here and not an omission: nobody is ever signed in on this surface — see the header.
+      */}
+      <CloudsForgeFooter
+        current={PRODUCT}
+        note={
+          <>
             This pool is operated by CloudsForge and mines to CloudsForge&rsquo;s own addresses.{' '}
             {!payoutsImplemented && 'Shares are recorded; nothing is settled. '}
             Nothing on this page is an offer, a contract or a promise of reward.
-          </p>
-          <p className="pl-foot__base">
-            <span className="pl-foot__brand">
-              <CloudsForgeLogo size={16} />
-            </span>
-            <span className="pl-foot__here">
-              {SURFACE_NAME} — Stratum v1, PPLNS{payoutsImplemented ? '.' : ', no payouts.'}
-            </span>
-          </p>
-        </div>
-      </footer>
+          </>
+        }
+      />
 
       {/*
         LAST IN THE DOCUMENT, AND THEREFORE LAST IN THE TAB ORDER. The banner is a dialog and is
@@ -167,15 +162,20 @@ export function AppShell() {
 /**
  * The document head, kept in step with the address.
  *
- * `surfaceMeta()` from `@cloudsforge/ui/seo` is NOT used, for the same reason the shared footer is
- * not mounted: it takes a `SurfaceKey` and calls `surface(key)`, which throws. `applyHead` takes a
- * plain `SurfaceMeta` object, so the shared writer — which updates each tag IN PLACE rather than
- * appending, the bug every hand-rolled version of this has — is used with a locally composed value.
- * When the registry row lands, this collapses to one `surfaceMeta(PRODUCT, …)` call.
+ * `surfaceMeta()` composes the title as `Page — Surface Name` from the registry, so the name is
+ * read once and the suffix cannot drift. It was hand-composed here until `surface('pool')` started
+ * resolving; that is the whole of what changed.
  *
- * `robots` is `index, follow`: this is a public reference page whose entire purpose is that a
- * stranger with an ASIC can find it. It is the same directive `robotsDirective()` would derive for
- * a surface that serves a UI and is not admin-only.
+ * `description` is passed EXPLICITLY rather than derived. `descriptionFor()` would compose one from
+ * the registry blurb plus the company line, and that is a fine description of a mining pool and a
+ * poor description of THIS one — what a prospective miner has to be told first is that it pays
+ * nothing, and a description is frequently the only sentence they read before deciding whether to
+ * point hardware here. `test/seo.test.ts` compares the constant byte for byte with `index.html`.
+ *
+ * `robots` is likewise stated rather than derived. `robotsDirective()` would produce the same
+ * string today, from `servesUi: true` and no `adminOnly` — but this surface's indexability is a
+ * decision it makes about itself (a pool a stranger with an ASIC cannot find is a pool with no
+ * miners), not a side effect of two registry flags somebody may set for another reason.
  *
  * The page title is read off `ROUTES`, the same declaration the navigation, the router and nginx's
  * enumerated locations all derive from, rather than typed a fifth time.
@@ -188,14 +188,12 @@ function DocumentMeta() {
     const label =
       segment === '' ? null : (ROUTES.find((route) => route.path === segment)?.label ?? null)
     applyHead(
-      {
-        title: label === null ? SURFACE_NAME : `${label} — ${SURFACE_NAME}`,
+      surfaceMeta(PRODUCT, {
+        ...(label === null ? {} : { title: label }),
         description: SURFACE_DESCRIPTION,
         path: pathname,
-        image: DEFAULT_OG_IMAGE,
         robots: 'index, follow, max-image-preview:large',
-        lang: HTML_LANG,
-      },
+      }),
       // Read here rather than in the module, which is what keeps a hostname out of the artefact:
       // one bundle serves localhost, a preview deployment and the apex and composes correct
       // absolute URLs on each.

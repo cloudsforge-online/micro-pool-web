@@ -95,32 +95,58 @@ test('NO CLOUDSFORGE HOSTNAME IS WRITTEN DOWN IN THIS BUNDLE', () => {
   }
 })
 
-test('the stratum endpoint is derived, not written down', () => {
-  // The most tempting literal on this surface, and the most expensive one to get wrong: a wrong
-  // hostname in a miner's firmware costs its owner a silent outage they will blame on their own
-  // hardware. `resolveStratumHost` returns null rather than guessing, and the page renders the
-  // absence.
-  const hosts = stripComments(read('src/lib/hosts.ts'), 'ts')
-  assert.doesNotMatch(hosts, /stratum\+tcp:\/\/[a-z]/)
+test('THE STRATUM ENDPOINT IS REPORTED BY THE SERVICE, NOT COMPOSED IN HERE', () => {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // The most tempting derivation on this surface and the most expensive one to get wrong: a wrong
+  // address in a miner's firmware costs its owner a silent outage they will blame on their own
+  // hardware.
+  //
+  // This bundle used to answer it from `window.location.hostname`. That was WRONG, not merely
+  // unverified — the console arrives through a Cloudflare Tunnel and then Traefik, neither of which
+  // forwards a raw TCP stream, and micro-pool binds the listener to loopback by default. Both halves
+  // now come off `GET /v1/pool` as `stratumEndpoint`, together or not at all (micro-org#285).
+  //
+  // So: no literal endpoint anywhere, and no source file composing one out of anything except the
+  // two fields the API sent. A template with a `location` or a `hosts` call inside it is the exact
+  // shape of the defect coming back.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
   for (const { path, text } of SRC) {
     assert.equal(
       /stratum\+tcp:\/\/[a-z0-9-]+\./.test(text),
       false,
-      `${path} contains a literal stratum endpoint; compose it from stratumHost() and the port the ` +
-        `API reported`,
+      `${path} contains a literal stratum endpoint; render the one the API published, or the ` +
+        `named hole when it published none`,
     )
+    for (const composed of text.match(/`stratum\+tcp:\/\/[^`]*`/g) ?? []) {
+      assert.ok(
+        !/location|hostname|hosts\(|apiBase|window/.test(composed),
+        `${path} builds a stratum endpoint out of the address of the page: ${composed}. That is ` +
+          `micro-org#285. Both halves come from stratumEndpoint on GET /v1/pool.`,
+      )
+    }
   }
 })
 
 test('the ports a miner dials come from the API, never from a list in here', () => {
   // `POOL_CHAINS` is per-deployment and only `ltc` is deployable today, so a hard-coded pair of
-  // ports would render a two-chain layout with a hole in it on every deployment there is. The one
-  // port constant permitted is micro-pool's own HTTP dev port, which is a fact about a service.
+  // ports would render a two-chain layout with a hole in it on every deployment there is. There is
+  // no exemption for `src/lib/hosts.ts` any more: it knows nothing about stratum at all. The one
+  // port constant permitted anywhere is micro-pool's HTTP dev port, and even that is read off the
+  // surface registry rather than written down.
   for (const { path, text } of SRC) {
-    if (path.endsWith('lib/hosts.ts')) continue
     assert.ok(!/\b333[34]\b/.test(text), `${path} names a stratum port; read it from status.chains`)
+    // Including the BIND port the API still reports. `stratumPort` is the inside of the deploy's
+    // port mapping and the published port may differ from it, so a page that fell back to it would
+    // print a plausible number that dials nothing — which is worse than printing none. The response
+    // TYPE is the one place it may be named: `src/lib/pool.ts` transcribes what the service sends,
+    // and deleting a field from a transcription does not stop the service sending it.
+    if (path.endsWith('lib/pool.ts')) continue
+    assert.ok(
+      !/stratumPort/.test(text),
+      `${path} reads stratumPort. That field is the port the listener BINDS inside the container, ` +
+        `not the port a miner dials; the published one is stratumEndpoint.port or nothing.`,
+    )
   }
-  assert.ok(!/\b333[34]\b/.test(stripComments(read('src/lib/hosts.ts'), 'ts')))
 })
 
 test('THIS BUNDLE HOLDS NO CREDENTIAL AND SENDS NONE', () => {
@@ -175,5 +201,5 @@ test('every request this bundle makes is same-origin by default', () => {
   // gateway routes `/v1` on the same hostname to micro-pool. An absolute base would be a hostname
   // written down, which is the rule above; it would also need CORS the service does not grant.
   const hosts = stripComments(read('src/lib/hosts.ts'), 'ts')
-  assert.match(hosts, /placement\.kind === 'local' \? `http:\/\/localhost:\$\{POOL_API_DEV_PORT\}` : ''/)
+  assert.match(hosts, /isLocal\(hostname\) \? `http:\/\/localhost:\$\{POOL_API_DEV_PORT\}` : ''/)
 })

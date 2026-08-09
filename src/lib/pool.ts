@@ -30,6 +30,24 @@
 import { api, type RequestOptions } from './api.ts'
 
 /**
+ * What a miner types into their firmware, when an operator has published it.
+ *
+ * ── BOTH HALVES OR NEITHER, AND THE SERVICE IS WHERE THAT IS DECIDED ──────────────────────────
+ *
+ * A nested object rather than two fields beside each other, because two fields can be read one at a
+ * time and composed into something that looks complete. `pool/src/env.ts` refuses half a pair at
+ * boot for the same reason — a host with no published port advertises nothing, and a port with no
+ * host is not an endpoint — so this type cannot represent a half either.
+ *
+ * `port` is the PUBLISHED port and is not `stratumPort` below. The two differ whenever the deploy
+ * maps them, which the estate's compose file does today.
+ */
+export interface StratumEndpoint {
+  readonly host: string
+  readonly port: number
+}
+
+/**
  * One chain's live state, exactly as `/v1/pool` renders it.
  *
  * `chain` is `'btc' | 'ltc'` in the service's own types (`pool/src/chains.ts`), and it is typed as
@@ -48,8 +66,28 @@ export interface PoolChainStatus {
   readonly decimals: number
   /** `sha256d` or `scrypt`. The pool dispatches proof of work on this; a miner has to match it. */
   readonly algorithm: string
-  /** The raw TCP port Stratum v1 listens on for this chain. NOT an HTTP port. */
+  /**
+   * The port micro-pool's stratum listener BINDS for this chain. **Not a port a miner can dial**,
+   * and nothing in this bundle renders it.
+   *
+   * It is the inside of a port mapping — the estate's compose file publishes
+   * `${POOL_LTC_STRATUM_PORT:-3334}` onto a container port fixed at 3334, so the two numbers are
+   * only equal by default — and the listener is bound to loopback unless the deploy says otherwise.
+   * It is read here so that this interface describes the response the service actually sends;
+   * `stratumEndpoint` is the field a reader is given. See micro-org#285.
+   */
   readonly stratumPort: number
+  /**
+   * WHERE TO POINT A MINER, OR NULL BECAUSE NOBODY HAS SAID.
+   *
+   * Null is the ordinary answer and is rendered as a named hole. It is emphatically NOT to be
+   * filled in from the page's own address: this bundle is served through a Cloudflare Tunnel and
+   * Traefik, neither of which forwards a raw TCP stream, so the hostname a reader is looking at is
+   * provably not where stratum is. This bundle derived it that way once and published a
+   * copy-pasteable connection string that could not connect — the worst possible version of a
+   * plausible screen, because its owner debugs their own hardware instead of asking a question.
+   */
+  readonly stratumEndpoint: StratumEndpoint | null
   readonly connections: number
   readonly height: number | null
   readonly networkDifficulty: number | null

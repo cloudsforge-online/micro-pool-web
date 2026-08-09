@@ -87,8 +87,8 @@ test('THE ENVIRONMENT LABELS NGINX KNOWS ARE THE REGISTRY’S OWN', () => {
 
 test('the environment map catches BOTH hostname shapes', () => {
   // `(?:[^.]+-)?` is what makes it match `pool-testnet.<apex>` as well as `testnet.<apex>`, for the
-  // same reason `placementOf()` resolves both: the environment is a suffix on the first label now
-  // and was an apex prefix before. Environment-as-suffix exists because Cloudflare's Universal SSL
+  // same reason `splitEnvLabel()` upstream resolves both: the environment is a suffix on the first
+  // label now and was an apex prefix before. Environment-as-suffix exists because Cloudflare's SSL
   // wildcard matches exactly ONE label, so `pool.testnet.<apex>` has no certificate.
   assert.match(NGINX, /\(\?:\[\^\.\]\+-\)\?/)
 })

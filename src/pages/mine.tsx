@@ -25,7 +25,6 @@ import {
   formatWindow,
   NOT_IMPLEMENTED,
 } from '../lib/format.ts'
-import { stratumHost } from '../lib/hosts.ts'
 import type { PoolChainStatus } from '../lib/pool.ts'
 import { defaultChain, usePoolStatus } from '../lib/status.tsx'
 
@@ -242,19 +241,28 @@ export function MinePage() {
 }
 
 /**
- * The block a miner copies into their firmware.
+ * The block a miner copies into their firmware — or the sentence that says there is not one.
  *
- * ── The endpoint is derived from the page's own address, and may be absent ─────────────────────
+ * ── THE ENDPOINT IS READ OFF THE API AND IS FREQUENTLY ABSENT ─────────────────────────────────
  *
- * Stratum v1 is line-delimited JSON-RPC over RAW TCP. It is not HTTP, so the HTTPS front door this
- * page arrived through cannot carry it, and micro-pool serves no TLS on the stratum port at all. The
- * hostname is therefore the one this page is served from — the deploy is expected to expose the TCP
- * ports on the same name — and `stratumHost()` returns null rather than a plausible guess when the
- * page is being served from somewhere that cannot be reconciled with the registry. A wrong hostname
- * in a miner's configuration costs its owner a silent outage they will blame on their hardware.
+ * This card used to compose `stratum+tcp://<this page's hostname>:<the port the API reported>` and
+ * that was wrong in production, not merely unverified. Stratum v1 is line-delimited JSON-RPC over
+ * RAW TCP; this page arrives through a Cloudflare Tunnel and then Traefik, and neither forwards a
+ * raw TCP stream, so the hostname a reader is looking at is provably not where the stratum port is.
+ * The port it printed was the one micro-pool BINDS, which is the inside of a port mapping and is on
+ * loopback by default. The result was a copy-pasteable command that no miner could connect with —
+ * and its owner would spend an evening on their hardware before suspecting this page.
+ * micro-org#285.
+ *
+ * So `chain.stratumEndpoint` is the whole of it: both halves, published by an operator who knows
+ * the port is genuinely reachable at that name, or `null`. When it is null this card renders a
+ * NAMED HOLE — what is missing, who can fix it, and no connection string of any kind, not even a
+ * partial one with a placeholder in it. A `<ask-an-operator>` in a command is still a command
+ * somebody edits and runs, and the bind port beside it would be a wrong number presented as a fact
+ * they can act on.
  */
 function ConnectCard({ chain }: { chain: PoolChainStatus }) {
-  const host = stratumHost()
+  const endpoint = chain.stratumEndpoint
 
   return (
     <div className="pl-card">
@@ -265,13 +273,15 @@ function ConnectCard({ chain }: { chain: PoolChainStatus }) {
       <dl className="pl-kv">
         <dt className="pl-kv__key">Address</dt>
         <dd className="pl-kv__val">
-          {host ? (
-            <code className="cf-num pl-code">{`stratum+tcp://${host}:${chain.stratumPort}`}</code>
+          {endpoint ? (
+            <code className="cf-num pl-code">{`stratum+tcp://${endpoint.host}:${endpoint.port}`}</code>
           ) : (
             <span className="pl-warn">
-              Not derivable from this address. The port is{' '}
-              <code className="cf-num">{chain.stratumPort}</code>; ask an operator which hostname
-              carries it.
+              No stratum endpoint has been published for this pool. That is a deliberate answer
+              rather than a fault: the address you are reading this on carries HTTPS through a
+              tunnel, which cannot carry a mining connection, so this page will not guess a
+              hostname or a port for you. Ask an operator for the address and the port before you
+              configure anything.
             </span>
           )}
         </dd>
@@ -307,13 +317,20 @@ function ConnectCard({ chain }: { chain: PoolChainStatus }) {
         </dd>
       </dl>
 
-      <pre className="pl-pre">
-        <code>
-          {host
-            ? `cgminer -o stratum+tcp://${host}:${chain.stratumPort} -u <your-address>.rig1 -p x`
-            : `cgminer -o stratum+tcp://<ask-an-operator>:${chain.stratumPort} -u <your-address>.rig1 -p x`}
-        </code>
-      </pre>
+      {/*
+        THERE IS NO COMMAND WHEN THERE IS NO ENDPOINT.
+
+        Not a command with a placeholder in it, which is what this used to render: a `<pre>` is the
+        one thing on a page that a reader copies without finishing it, and a command that cannot
+        connect is the most expensive way to be wrong here.
+      */}
+      {endpoint && (
+        <pre className="pl-pre">
+          <code>
+            {`cgminer -o stratum+tcp://${endpoint.host}:${endpoint.port} -u <your-address>.rig1 -p x`}
+          </code>
+        </pre>
+      )}
 
       {!chain.ready && (
         <p className="pl-note pl-note--warn" role="status">

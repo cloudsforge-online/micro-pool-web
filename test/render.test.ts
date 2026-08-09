@@ -14,7 +14,16 @@ import { test } from 'node:test'
 import { createElement } from 'react'
 import { App } from '../src/app.tsx'
 import { withScreen, type Routes } from './dom.ts'
-import { BTC, coldStatus, LTC, poolBlocks, poolShares, poolStatus, poolWorkers } from './fixtures.ts'
+import {
+  BTC,
+  coldStatus,
+  LTC,
+  poolBlocks,
+  poolShares,
+  poolStatus,
+  poolWorkers,
+  published,
+} from './fixtures.ts'
 
 /** Every route stubbed with the default fixtures, so a scenario only overrides what it is about. */
 function allRoutes(over: Routes = {}): Routes {
@@ -47,30 +56,63 @@ test('the landing page says what the pool will not do before it says how to conn
   })
 })
 
-test('the connection details are composed from the page address and the chain the API reported', async () => {
+test('THE ENDPOINT ON SCREEN IS THE ONE THE API PUBLISHED, NOT THE ADDRESS OF THE PAGE', async () => {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // This page used to compose `stratum+tcp://<its own hostname>:<the bound port>` and that string
+  // could not connect: the console arrives through a Cloudflare Tunnel and then Traefik, neither of
+  // which forwards a raw TCP stream, and the port it printed was the inside of a port mapping. The
+  // fixture therefore publishes a DIFFERENT host and a DIFFERENT port from both, so a regression
+  // that reached for either one is a red test rather than a plausible screen. micro-org#285.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  await withScreen(
+    app(),
+    {
+      url: 'https://pool.cloudsforge.online/',
+      routes: allRoutes({ 'GET /v1/pool': { body: poolStatus({ chains: [published(LTC, 4334)] }) } }),
+    },
+    async (screen) => {
+      assert.ok(screen.text().includes('stratum+tcp://stratum.example.com:4334'))
+      assert.ok(!screen.text().includes('pool.cloudsforge.online:'), 'the page address became an endpoint')
+      assert.ok(!screen.text().includes(':3334'), 'the BOUND port was offered as one a miner can dial')
+      assert.ok(screen.text().includes('scrypt'))
+      // Said in the same breath as the address, because a reader who assumes the HTTPS they are
+      // reading this over covers the mining port will configure TLS and get a silent failure.
+      assert.ok(screen.text().includes('There is no TLS on this port.'))
+      // The copy-pasteable form is there when, and only when, it can work.
+      assert.ok(screen.text().includes('cgminer -o stratum+tcp://stratum.example.com:4334'))
+    },
+  )
+})
+
+test('WITH NO PUBLISHED ENDPOINT THE PAGE NAMES THE HOLE AND OFFERS NO CONNECTION STRING AT ALL', async () => {
+  // The default fixture, because it is the state of every deployment of micro-pool there is: the
+  // endpoint is optional configuration and nothing has set it. A named hole rather than a plausible
+  // screen — and a copy-pasteable command that cannot connect is the worst possible version of a
+  // plausible screen, because its owner debugs their own hardware instead of asking a question.
   await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes: allRoutes() }, async (screen) => {
-    // 3334 comes from the fixture, which took it from `pool/src/env.ts`. Nothing in this bundle
-    // holds a port.
-    assert.ok(screen.text().includes('stratum+tcp://pool.cloudsforge.online:3334'))
+    assert.ok(!screen.text().includes('stratum+tcp://'), 'a connection string was rendered anyway')
+    assert.ok(!screen.text().includes('cgminer'), 'a command was rendered with a hole in it')
+    assert.ok(!screen.text().includes('3334'), 'the bound port was offered as something to dial')
+    assert.ok(screen.text().includes('No stratum endpoint has been published'))
+    assert.ok(screen.text().includes('Ask an operator'))
+    // The rest of the card still renders. The endpoint is missing; the algorithm, the username
+    // convention and the warning about TLS are all still facts a reader needs.
     assert.ok(screen.text().includes('scrypt'))
-    // Said in the same breath as the address, because a reader who assumes the HTTPS they are
-    // reading this over covers the mining port will configure TLS and get a silent failure.
     assert.ok(screen.text().includes('There is no TLS on this port.'))
   })
 })
 
-test('served from an address the registry cannot place, the endpoint is refused rather than guessed', async () => {
+test('served from an address the registry cannot place, the shell says so', async () => {
   await withScreen(
     app(),
     { url: 'https://some-preview.example.net/', routes: allRoutes() },
     async (screen) => {
-      // A wrong hostname in a miner's firmware is a silent outage its owner will blame on their
-      // hardware. So there is no `stratum+tcp://` line at all, and the port is still given so an
-      // operator can be asked the one question that remains.
-      assert.ok(!screen.text().includes('stratum+tcp://some-preview.example.net'))
-      assert.ok(screen.text().includes('Not derivable from this address'))
-      assert.ok(screen.text().includes('3334'))
+      // A page whose every outbound link is silently wrong is worse than one that admits it does not
+      // know where it is. This is now the WHOLE of what an unregistered placement affects: the
+      // stratum endpoint is no longer derived from the address, so it is null here for the same
+      // reason it is null everywhere else — nobody published one.
       assert.ok(screen.queryByRole('status', /surface registry does not know/))
+      assert.ok(!screen.text().includes('stratum+tcp://'))
     },
   )
 })
@@ -94,7 +136,11 @@ test('a pool serving two chains renders a selector and a panel for each', async 
     app(),
     {
       url: 'https://pool.cloudsforge.online/',
-      routes: allRoutes({ 'GET /v1/pool': { body: poolStatus({ chains: [LTC, BTC] }) } }),
+      routes: allRoutes({
+        'GET /v1/pool': {
+          body: poolStatus({ chains: [published(LTC, 4334), published(BTC, 4333)] }),
+        },
+      }),
     },
     async (screen) => {
       const picker = screen.byRole('combobox', /Chain/)
@@ -109,7 +155,9 @@ test('a pool serving two chains renders a selector and a panel for each', async 
       // and then sits idle, which looks exactly like their own hardware failing.
       assert.ok(!screen.text().includes('cannot hand out work right now'))
       await screen.type(picker, 'btc')
-      assert.ok(screen.text().includes('stratum+tcp://pool.cloudsforge.online:3333'))
+      // A pool serving two chains publishes two PORTS under one name, which is why the port is
+      // per chain in micro-pool's configuration and the host is not.
+      assert.ok(screen.text().includes('stratum+tcp://stratum.example.com:4333'))
       assert.ok(screen.text().includes('cannot hand out work right now'))
       assert.ok(screen.text().includes('sha256d'))
     },

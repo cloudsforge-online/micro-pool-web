@@ -15,16 +15,28 @@
  * the one field this whole site turns on, and `test/honesty.test.ts` also asserts the TRUE case, so
  * the day micro-pool implements settlement there is already a test describing what should happen.
  */
-import type { PoolBlocks, PoolShares, PoolStatus, PoolWorkers } from '../src/lib/pool.ts'
+import type { PoolBlocks, PoolChainStatus, PoolShares, PoolStatus, PoolWorkers } from '../src/lib/pool.ts'
 
-/** One chain, serving work. Litecoin, because on 2026-08-09 `ltc` is all the estate can deploy. */
+/**
+ * One chain, serving work. Litecoin, because on 2026-08-09 `ltc` is all the estate can deploy.
+ *
+ * `stratumEndpoint` is NULL in the default fixtures, and that is not laziness — it is the state of
+ * every deployment of micro-pool there is. The endpoint is optional configuration
+ * (`POOL_STRATUM_PUBLIC_HOST` and `POOL_<CHAIN>_STRATUM_PUBLIC_PORT`) and nothing has set it, so
+ * the default fixture renders the named hole and the happy path is the one that has to be asked
+ * for. A suite whose default fixture published an endpoint would stop checking the screen every
+ * reader currently gets.
+ */
 export const LTC = {
   chain: 'ltc',
   name: 'Litecoin',
   asset: 'LTC',
   decimals: 8,
   algorithm: 'scrypt',
+  // The port the listener BINDS, which is the inside of the deploy's port mapping. It is in the
+  // response and nothing in the bundle renders it; see `PoolChainStatus`.
   stratumPort: 3334,
+  stratumEndpoint: null,
   connections: 2,
   height: 2_912_004,
   networkDifficulty: 34_512_119.5,
@@ -44,6 +56,7 @@ export const BTC = {
   decimals: 8,
   algorithm: 'sha256d',
   stratumPort: 3333,
+  stratumEndpoint: null,
   connections: 0,
   height: null,
   networkDifficulty: null,
@@ -56,6 +69,21 @@ export const BTC = {
   workersInWindow: 0,
   hashrateEstimate: 0,
 } as const
+
+/**
+ * The same chain after an operator has published an endpoint for it.
+ *
+ * The host is `stratum.example.com` and NOT the hostname any test browses to, on purpose: the whole
+ * defect this fixture exists to pin (micro-org#285) was a page composing the endpoint out of its own
+ * address. A fixture that published `pool.cloudsforge.online` would agree with the bug.
+ *
+ * The port is not `stratumPort` either. A deploy maps the published port onto the bound one and the
+ * estate's compose file does exactly that, so a fixture where the two matched would let a
+ * regression that reported the bind pass unnoticed.
+ */
+export function published(chain: PoolChainStatus, port: number): PoolChainStatus {
+  return { ...chain, stratumEndpoint: { host: 'stratum.example.com', port } }
+}
 
 export function poolStatus(over: Partial<PoolStatus> = {}): PoolStatus {
   return {

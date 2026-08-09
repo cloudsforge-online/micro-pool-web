@@ -51,10 +51,14 @@ export function NotPaidNotice() {
 /**
  * This bundle is being served from an address it cannot derive the estate from.
  *
- * Not fatal — every route here is public and the API is same-origin — but not silent either. See
- * the header of `src/lib/hosts.ts`: with no `pool` row in the surface registry, an unrecognised
- * hostname makes every estate link on the page resolve one level too deep, and the stratum hostname
- * this site's whole purpose is to hand out cannot be derived at all.
+ * Not fatal — every route here is public and the API is same-origin — but not silent either.
+ * `cloudsforgeHosts()` derives the apex by stripping a KNOWN first label, so served from a name the
+ * registry cannot place, the whole name becomes the apex and every estate link on the page resolves
+ * one level too deep, including the three legal links the shared footer composes for itself.
+ *
+ * It says nothing about the STRATUM endpoint, and used to. That was true while this bundle derived
+ * the endpoint from its own address; it does not any more — micro-pool publishes it or publishes
+ * null, and either answer is the same on a hostname nobody recognises (micro-org#285).
  */
 export function UnregisteredNotice() {
   return (
@@ -64,8 +68,8 @@ export function UnregisteredNotice() {
       </span>
       <span>
         This page is being served from an address the CloudsForge surface registry does not know, so
-        the links out of it are derived from the wrong apex and the mining endpoint below cannot be
-        worked out from it. Its home is the <code className="cf-num">pool</code> subdomain.
+        every link out of it is derived from the wrong apex and may go nowhere. Its home is the{' '}
+        <code className="cf-num">pool</code> subdomain.
       </span>
     </p>
   )
