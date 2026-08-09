@@ -75,11 +75,39 @@ jobs:
       # micro-pool, for test/pool-contract.test.ts. Every response shape this bundle reads was
       # taken off that service's handlers; checking it out is what stops those types becoming a
       # description of an API that has since changed.
+      #
+      # `fetch-depth: 0` because THE SERVICE IS NOT ON `main` YET. Checked on 2026-08-09:
+      # cloudsforge-online/micro-pool's default branch holds a LICENCE and a .gitignore and nothing
+      # else — the whole service is on `feat/stratum-v1-pool`, which is pull request #1 and still
+      # open. A depth-1 checkout of main therefore produces a directory with no `src/` in it, the
+      # contract test skips, and the gate below fails naming the wrong cause.
       - uses: actions/checkout@v4
         with:
           repository: cloudsforge-online/micro-pool
           path: pool
+          fetch-depth: 0
           token: ${{ secrets.ESTATE_READ_TOKEN || github.token }}
+
+      # And the branch is taken ONLY when main does not have the service. This is deliberately not
+      # a pinned `ref:` on the checkout above: a pin would keep reading the branch after it merged,
+      # so the day micro-pool#1 lands this repository would be checking its types against a stale
+      # copy while believing it was checking main. Written as a fallback instead, it becomes a
+      # no-op the moment the service reaches main and the warning stops being printed by itself.
+      - name: Take micro-pool's open pull request, but only while it is open
+        run: |
+          set -euo pipefail
+          if [ -f pool/src/server.ts ]; then
+            echo "ok: micro-pool's service is on its default branch"
+            exit 0
+          fi
+          git -C pool checkout --quiet origin/feat/stratum-v1-pool -- . 2>/dev/null || {
+            echo "::error::micro-pool has no src/server.ts on main and no feat/stratum-v1-pool " \
+                 "branch either. If the pull request merged, delete this step."
+            exit 1
+          }
+          echo "::warning::micro-pool's service is not on main yet " \
+               "(cloudsforge-online/micro-pool#1 is open), so the response shapes were checked " \
+               "against that pull request's head. Delete this step when it merges."
 
       # Pinned, because the checkout lives at pool-web/ and the action looks for the packageManager
       # field in the workspace root, where there is no package.json.
