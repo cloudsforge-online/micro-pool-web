@@ -47,14 +47,22 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: pool-web }
 
-      # The design system, consumed as `link:../ui/packages/ui`. Private, so without a
-      # contents:read token this checkout 404s and the job dies with a message about a missing
-      # repository rather than about a missing token.
+      # The design system, consumed as `link:../ui/packages/ui`.
+      #
+      # `|| github.token` and not a bare secret. Measured on 2026-08-09: this repository was new,
+      # ESTATE_READ_TOKEN had not been set on it yet, and `token: ${{ secrets.ESTATE_READ_TOKEN }}`
+      # resolved to the EMPTY STRING — which actions/checkout does not treat as "use the default",
+      # it treats as a supplied-but-invalid input and dies with `Input required and not supplied:
+      # token` before it has said which repository it was trying to read. The named secret stays
+      # first because it is the estate's convention and because these siblings were private until
+      # recently; the fallback is what micro-org's own publish-image.yml does, for the same reason
+      # its comment gives: it "falls back to the job token, which is enough while those
+      # repositories are public".
       - uses: actions/checkout@v4
         with:
           repository: cloudsforge-online/micro-ui
           path: ui
-          token: ${{ secrets.ESTATE_READ_TOKEN }}
+          token: ${{ secrets.ESTATE_READ_TOKEN || github.token }}
 
       # micro-brand, for test/brand-chrome.test.ts. The favicons and the og card in public/ are
       # COPIES of Forge Network's, and a copy that is never compared is a copy that drifts.
@@ -62,7 +70,7 @@ jobs:
         with:
           repository: cloudsforge-online/micro-brand
           path: brand
-          token: ${{ secrets.ESTATE_READ_TOKEN }}
+          token: ${{ secrets.ESTATE_READ_TOKEN || github.token }}
 
       # micro-pool, for test/pool-contract.test.ts. Every response shape this bundle reads was
       # taken off that service's handlers; checking it out is what stops those types becoming a
@@ -71,7 +79,7 @@ jobs:
         with:
           repository: cloudsforge-online/micro-pool
           path: pool
-          token: ${{ secrets.ESTATE_READ_TOKEN }}
+          token: ${{ secrets.ESTATE_READ_TOKEN || github.token }}
 
       # Pinned, because the checkout lives at pool-web/ and the action looks for the packageManager
       # field in the workspace root, where there is no package.json.
@@ -327,7 +335,7 @@ jobs:
         with:
           repository: cloudsforge-online/micro-ui
           path: ui
-          token: ${{ secrets.ESTATE_READ_TOKEN }}
+          token: ${{ secrets.ESTATE_READ_TOKEN || github.token }}
 
       - uses: docker/setup-buildx-action@v3
       - name: Build
