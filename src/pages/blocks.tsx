@@ -23,13 +23,21 @@ import { formatAgo, formatAmount, formatCount, formatDifficulty, shortHash } fro
 import { apiBase } from '../lib/hosts.ts'
 import { fetchBlocks, type PoolBlocks } from '../lib/pool.ts'
 import { lengthOf, useResource } from '../lib/resource.ts'
-import { defaultChain, usePoolStatus } from '../lib/status.tsx'
+import { defaultChain, minedChains, usePoolStatus } from '../lib/status.tsx'
 
 export function BlocksPage() {
   const { chains } = usePoolStatus()
   const [chosen, setChosen] = useState<string | null>(null)
+  // THE ONE PAGE WHOSE CHAIN LIST IS THE MINED SET RATHER THAN THE SERVED SET. A merge-mined
+  // Dogecoin block is a block this pool found — with a hash, a reward and a maturity countdown —
+  // and it is the only kind of record an aux chain has. Leaving it off this page would mean the
+  // pool could win DOGE that no reader could ever see. The default stays the parent.
+  const mined = minedChains(chains)
   const chain = chosen ?? defaultChain(chains)
   const base = apiBase()
+  /** The chain whose work won these blocks, when the selected one is merge-mined. Null otherwise. */
+  const parentOf = (selected: string | null) =>
+    chains.find((c) => c.merged !== null && c.merged.chain === selected) ?? null
 
   const blocks = useResource<PoolBlocks>(
     (signal) => {
@@ -52,7 +60,7 @@ export function BlocksPage() {
         was done and the network did not take it, which is worth seeing.
       </p>
 
-      {chains.length > 1 && (
+      {mined.length > 1 && (
         <p className="pl-chainpick">
           <label className="pl-chainpick__label" htmlFor="pl-blocks-chain">
             Chain
@@ -63,12 +71,32 @@ export function BlocksPage() {
             value={chain ?? ''}
             onChange={(event) => setChosen(event.target.value)}
           >
-            {chains.map((c) => (
+            {mined.map((c) => (
               <option key={c.chain} value={c.chain}>
-                {c.name} ({c.chain})
+                {/*
+                  The word "merged" is in the option rather than only in a caption underneath,
+                  because the selector is what a reader acts on and an unlabelled `Dogecoin (doge)`
+                  beside `Litecoin (ltc)` says this pool has two stratum ports. It has one.
+                */}
+                {c.name} ({c.chain}){c.merged ? ' — merged' : ''}
               </option>
             ))}
           </select>
+        </p>
+      )}
+
+      {/*
+        The caption for the state a reader is most likely to misread: a table of Dogecoin blocks on
+        a pool that has no Dogecoin port. Rendered from the SELECTION rather than from the response,
+        so it is on screen while the request is still in flight and cannot flicker in after the
+        rows.
+      */}
+      {parentOf(chain) && (
+        <p className="pl-hint">
+          These were found by <strong>merged mining</strong>: the work was {parentOf(chain)?.name}{' '}
+          work, and each block here was solved by the same share that had a chance at a{' '}
+          {parentOf(chain)?.name} one. There is no separate miner, no separate hashrate and no share
+          history of its own — the shares are all on {parentOf(chain)?.name}.
         </p>
       )}
 
@@ -91,6 +119,28 @@ export function BlocksPage() {
       {blocks.state === 'ok' && blocks.data && <BlockTable found={blocks.data} />}
     </div>
   )
+}
+
+/**
+ * How each maturity verdict is drawn. Icon AND word AND colour, never colour alone.
+ *
+ * `pending` is deliberately neutral rather than a warning: every block is pending for its first
+ * four hours, so an amber row for the ordinary state would train a reader to ignore the column
+ * before the one row that matters appears in it. An unrecognised status — the service is free to
+ * grow one — falls through to a warning and is printed verbatim, which is the safe direction.
+ */
+const MATURITY_TONE: Readonly<Record<string, string>> = {
+  matured: 'cf-status--good',
+  // The bare `.cf-status`, which the design system draws in the neutral surface colours. There is
+  // no `--info` modifier and this does not want one.
+  pending: '',
+  orphaned: 'cf-status--critical',
+}
+
+const MATURITY_GLYPH: Readonly<Record<string, string>> = {
+  matured: '●',
+  pending: '◌',
+  orphaned: '■',
 }
 
 /**
@@ -121,6 +171,16 @@ function BlockTable({ found }: { found: PoolBlocks }) {
             <th scope="col">Height</th>
             <th scope="col">Found</th>
             <th scope="col">Verdict</th>
+            {/*
+              TWO VERDICT COLUMNS, BECAUSE THEY ARE TWO DIFFERENT ANSWERS FROM THE SAME NODE.
+
+              `submitStatus` is what it said when the block was handed to it; `maturityStatus` is
+              what it says now. A block accepted onto the tip can still lose a reorg well inside the
+              coinbase maturity window, and its coinbase is then spendable by nobody. Collapsing the
+              two into one cell would let a table go on reporting `accepted` for a block that no
+              longer exists.
+            */}
+            <th scope="col">Maturity</th>
             <th scope="col">Hash</th>
             <th scope="col">Reward ({found.asset})</th>
             <th scope="col">Network difficulty</th>
@@ -151,6 +211,26 @@ function BlockTable({ found }: { found: PoolBlocks }) {
                   operator greps for, and paraphrasing it would break that.
                 */}
                 {block.submitDetail && <span className="pl-dim pl-detail"> {block.submitDetail}</span>}
+              </td>
+              <td>
+                <span className={`cf-status ${MATURITY_TONE[block.maturityStatus] ?? 'cf-status--warn'}`}>
+                  <span className="cf-status__glyph" aria-hidden="true">
+                    {MATURITY_GLYPH[block.maturityStatus] ?? '▲'}
+                  </span>
+                  {block.maturityStatus}
+                </span>
+                {/*
+                  The count beside the word, because "pending" alone does not say whether it is four
+                  minutes or four hours from being settled. Null is rendered as "not checked" and
+                  NEVER as 0: zero confirmations means the node does not have the block, and the two
+                  readings send an operator to opposite conclusions.
+                */}
+                <span className="pl-dim pl-detail">
+                  {' '}
+                  {block.confirmations === null
+                    ? 'not checked yet'
+                    : `${formatCount(block.confirmations)} conf`}
+                </span>
               </td>
               <td className="cf-num" title={block.hash}>
                 {shortHash(block.hash)}

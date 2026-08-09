@@ -46,6 +46,10 @@ export const LTC = {
   sharesInWindow: 118,
   workersInWindow: 3,
   hashrateEstimate: 812_000_000,
+  // No aux chain, which is the estate's own configuration and the default state of every deployment
+  // of micro-pool on 2026-08-09. `mergedWith` below produces the two configured cases, so the
+  // default fixture keeps checking the screen every reader currently gets.
+  merged: null,
 } as const
 
 /** A second chain, so the multi-chain branches can be exercised without hard-coding two anywhere. */
@@ -68,7 +72,39 @@ export const BTC = {
   sharesInWindow: 0,
   workersInWindow: 0,
   hashrateEstimate: 0,
+  merged: null,
 } as const
+
+/**
+ * The same chain with Dogecoin merged into it — committing, or configured and not.
+ *
+ * The two are one function with one argument because they are ONE FIXTURE APART IN THE RESPONSE
+ * and worlds apart on screen, which is the entire hazard: a pool whose dogecoind is in initial
+ * block download reports the same hashrate, the same shares and the same workers as one whose
+ * dogecoind is healthy, and simply stops being worth DOGE. A suite that only ever built the happy
+ * one would let the page round the middle state up to it and nothing would go red.
+ *
+ * The height and difficulty are null in the uncommitted case because that is what the service
+ * sends — there is no aux block to read them off when the node will not give one.
+ */
+export function mergedWith(chain: PoolChainStatus, unavailability: string | null = null): PoolChainStatus {
+  const committed = unavailability === null
+  return {
+    ...chain,
+    merged: {
+      chain: 'doge',
+      name: 'Dogecoin',
+      asset: 'DOGE',
+      committed,
+      unavailability,
+      height: committed ? 5_015_467 : null,
+      // Dogecoin's difficulty measured on scrypt, the PARENT'S algorithm — the only unit it means
+      // anything in. Deliberately a different order of magnitude from LTC's above, so a panel that
+      // rendered the parent's number in the merged row would be caught.
+      networkDifficulty: committed ? 12_345_678.5 : null,
+    },
+  }
+}
 
 /**
  * The same chain after an operator has published an endpoint for it.
@@ -119,6 +155,10 @@ export function poolBlocks(over: Partial<PoolBlocks> = {}): PoolBlocks {
         networkDifficulty: 34_512_119.5,
         submitStatus: 'accepted',
         submitDetail: null,
+        // The ordinary state of a recent block, and the one every block is in for its first four
+        // hours. `confirmations` is the node's own count.
+        maturityStatus: 'pending',
+        confirmations: 37,
       },
       {
         height: 2_911_402,
@@ -132,6 +172,29 @@ export function poolBlocks(over: Partial<PoolBlocks> = {}): PoolBlocks {
         // rejections render at all.
         submitStatus: 'rejected',
         submitDetail: 'inconclusive: stale block time-too-old',
+        // A block the node refused was never in anybody's chain index, so the maturity sweep's
+        // `getblock` comes back `-5` and micro-pool deliberately leaves the row PENDING with no
+        // count rather than calling it orphaned (pool/src/maturity.ts). The null is the case the
+        // blocks page must never render as `0`.
+        maturityStatus: 'pending',
+        confirmations: null,
+      },
+      {
+        // ══════════════════════════════════════════════════════════════════════════════════════
+        // THE ROW THE MATURITY COLUMN EXISTS FOR, and it is in the default fixture for the same
+        // reason the rejection above is: this block was ACCEPTED. The node took it, it was on the
+        // tip, and a table with one verdict column would go on saying so for ever. It then lost a
+        // reorg, its coinbase is spendable by nobody, and `confirmations` is Core's own -1 signal.
+        // ══════════════════════════════════════════════════════════════════════════════════════
+        height: 2_911_301,
+        hash: 'deadbeefcafef00d0123456789abcdef0123456789abcdefdeadbeefcafef00d',
+        foundAt: '2026-08-08T20:02:00.000Z',
+        reward: '1250000000',
+        networkDifficulty: 33_998_112.75,
+        submitStatus: 'accepted',
+        submitDetail: null,
+        maturityStatus: 'orphaned',
+        confirmations: -1,
       },
     ],
     ...over,

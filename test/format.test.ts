@@ -131,7 +131,11 @@ test('every absence names what happens instead', () => {
   // hardware speaks" tells them whether their machine will connect, which is the question they came
   // with. A one-sided list would be a disclaimer rather than documentation.
   const named = NOT_IMPLEMENTED.map((item) => item.what)
-  for (const required of ['Payouts', 'Dogecoin', 'Stratum v2', 'TLS on the stratum port']) {
+  // "Dogecoin" alone was the name until micro-pool implemented AuxPoW (micro-org#29), and it stopped
+  // being true: DOGE is mineable here now, as a chain OF Litecoin rather than a chain of its own.
+  // The longer name is the whole of what is still refused, and the entry is dropped entirely on a
+  // deployment that has an aux chain configured.
+  for (const required of ['Payouts', 'Dogecoin as a chain of its own', 'Stratum v2', 'TLS on the stratum port']) {
     assert.ok(named.includes(required), `the absences must name ${required}`)
   }
   for (const item of NOT_IMPLEMENTED) {

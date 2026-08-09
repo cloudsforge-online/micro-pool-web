@@ -18,6 +18,7 @@ import {
   BTC,
   coldStatus,
   LTC,
+  mergedWith,
   poolBlocks,
   poolShares,
   poolStatus,
@@ -160,6 +161,187 @@ test('a pool serving two chains renders a selector and a panel for each', async 
       assert.ok(screen.text().includes('stratum+tcp://stratum.example.com:4333'))
       assert.ok(screen.text().includes('cannot hand out work right now'))
       assert.ok(screen.text().includes('sha256d'))
+    },
+  )
+})
+
+/* ------------------------------------------------------------------ merged mining (micro-org#29) */
+
+test('A CONFIGURED MERGED CHAIN THAT IS NOT COMMITTING IS NEVER SHOWN AS ONE THAT IS', async () => {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // The state this whole panel exists for. A pool whose dogecoind is in initial block download
+  // mines Litecoin exactly as well as one whose dogecoind is healthy — same hashrate, same shares,
+  // same workers, same everything on this page — and simply stops being worth DOGE. Merged mining
+  // fails by ABSENCE, so the only way a reader learns it stopped is if the page says so.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  await withScreen(
+    app(),
+    {
+      url: 'https://pool.cloudsforge.online/',
+      routes: allRoutes({
+        'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(published(LTC, 4334), 'syncing')] }) },
+      }),
+    },
+    async (screen) => {
+      const text = screen.text()
+      assert.ok(text.includes('Configured, not being mined'))
+      // The one-word reason, expanded into something a reader can act on — and this one is "wait",
+      // which is a different instruction from the other three.
+      assert.ok(text.includes('still downloading its chain'))
+      // The parent is explicitly unaffected. A miner reading a warning on this card must not
+      // conclude their Litecoin work is also in trouble and unplug.
+      assert.ok(text.includes('Litecoin mining is unaffected'))
+
+      // And nothing claims it IS happening. These are the sentences the committing case renders.
+      assert.ok(!text.includes('Committed into'), 'an uncommitted chain was shown as committed')
+      assert.ok(
+        !text.includes('The work you are being handed right now carries it'),
+        'the connection card promised DOGE that is not being mined',
+      )
+      // No height and no difficulty either: they would be read off an aux block that does not
+      // exist, and a stale pair beside a node that has stopped answering looks live.
+      assert.ok(!text.includes('Dogecoin height'))
+      assert.ok(!text.includes('5,015,467'))
+    },
+  )
+})
+
+test('a committing merged chain reports its own height and difficulty, and says the work is free', async () => {
+  await withScreen(
+    app(),
+    {
+      url: 'https://pool.cloudsforge.online/',
+      routes: allRoutes({
+        'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(published(LTC, 4334))] }) },
+      }),
+    },
+    async (screen) => {
+      const text = screen.text()
+      assert.ok(text.includes('Committed into Litecoin work'))
+      assert.ok(text.includes('Dogecoin height'))
+      assert.ok(text.includes('5,015,467'))
+      // The aux chain's own difficulty, which is a different number from the parent's — a panel
+      // that rendered the parent's here would be caught by the two fixtures being orders of
+      // magnitude apart.
+      assert.ok(text.includes('12.3M'), 'the merged difficulty is missing or is the parent’s')
+      assert.ok(text.includes('measured on scrypt'))
+
+      // THE THING A MINER HAS TO BE TOLD, on the card they are configuring from: there is nothing
+      // to configure. A reader told about a second asset and given no settings for it goes looking
+      // for the part they missed.
+      assert.ok(text.includes('Nothing to configure'))
+      assert.ok(text.includes('no second address'))
+
+      // And the absence is gone from the list above, because the pool is doing the thing the list
+      // said it does not do.
+      assert.ok(!text.includes('Refused by name, not missing'))
+
+      // The new markup is held to the same bar as the rest of the page: no console noise, no
+      // element without an accessible name, nothing rendered into a void.
+      screen.clean('the landing page with a merged chain')
+    },
+  )
+})
+
+test('a configured-but-broken merged chain still removes the absence, because the pool CAN do it', async () => {
+  // The distinction the filter turns on. "This deployment merge-mines nothing" is false the moment
+  // an operator configures an aux chain, whatever its node is doing — and leaving the entry on
+  // screen would have the page deny a thing it is simultaneously reporting on, three sections down.
+  await withScreen(
+    app(),
+    {
+      url: 'https://pool.cloudsforge.online/',
+      routes: allRoutes({
+        'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(LTC, 'unreachable')] }) },
+      }),
+    },
+    async (screen) => {
+      assert.ok(!screen.text().includes('Refused by name, not missing'))
+      assert.ok(screen.text().includes('cannot reach the Dogecoin node'))
+      // The other absences are properties of the protocol and are untouched by any of this.
+      assert.ok(screen.text().includes('Stratum v1 only'))
+    },
+  )
+})
+
+test('a pool with no aux chain says nothing about merged mining except that it is refused', async () => {
+  // The estate's own configuration on 2026-08-09 and the default everywhere. `merged: null` is not
+  // `committed: false`: the first says nobody asked for it, the second says somebody did and it is
+  // not working, and a page that collapsed them would invent an absence or hide a fault.
+  await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes: allRoutes() }, async (screen) => {
+    const text = screen.text()
+    assert.ok(text.includes('Refused by name, not missing'))
+    assert.ok(!text.includes('Merged: '), 'a panel was rendered for a chain nothing is merged into')
+    assert.ok(!text.includes('Configured, not being mined'))
+    assert.ok(!text.includes('Dogecoin height'))
+  })
+})
+
+test('THE BLOCKS PAGE CAN REACH A MERGE-MINED CHAIN, OR THE POOL WINS DOGE NOBODY CAN SEE', async () => {
+  // `pool_blocks` is keyed by the chain the BLOCK is on, so a Dogecoin block won by merged mining
+  // is a real row with a real reward — and this page is the only place it is ever visible. The
+  // selector is therefore drawn from the MINED set and not from the served set, which is the one
+  // place on this site where those two differ.
+  await withScreen(
+    app(),
+    {
+      url: 'https://pool.cloudsforge.online/blocks',
+      routes: allRoutes({
+        'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(LTC)] }) },
+        'GET /v1/pool/blocks': {
+          body: poolBlocks({ chain: 'doge', asset: 'DOGE', decimals: 8 }),
+        },
+      }),
+    },
+    async (screen) => {
+      const picker = screen.byRole('combobox', /Chain/)
+      // Labelled as merged in the option itself. An unlabelled `Dogecoin (doge)` beside
+      // `Litecoin (ltc)` says this pool has two stratum ports; it has one.
+      assert.ok(screen.text().includes('Dogecoin (doge) — merged'))
+      await screen.type(picker, 'doge')
+      assert.ok(screen.text().includes('found by merged mining'))
+      assert.ok(screen.text().includes('the shares are all on Litecoin'))
+      assert.ok(screen.byRole('table', /Blocks this pool has submitted/))
+    },
+  )
+})
+
+test('AN ACCEPTED BLOCK THAT LOST A REORG STOPS READING AS ACCEPTED', async () => {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // `submitStatus` is what the node said when it took the block; `maturityStatus` is what it says
+  // now. They disagree exactly once and it is the expensive time: a block accepted onto the tip,
+  // orphaned well inside the coinbase maturity window, whose reward is spendable by nobody.
+  // micro-pool has sent both fields since 2.5.9 and this page rendered only the first, so an
+  // orphaned block read as `accepted` for ever.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  await withScreen(
+    app(),
+    { url: 'https://pool.cloudsforge.online/blocks', routes: allRoutes() },
+    async (screen) => {
+      // PER ROW, not over the page. Every assertion here is about two facts appearing TOGETHER, and
+      // a regex over the whole table would be satisfied by a page that rendered the words in
+      // different rows — which is the exact defect, one block's verdict read against another's.
+      const rowFor = (height: string): string => {
+        const rows = [...screen.document.querySelectorAll('tr')]
+        const found = rows.filter((tr) => screen.textOf(tr).includes(height))
+        assert.equal(found.length, 1, `expected one row for height ${height}, found ${found.length}`)
+        return screen.textOf(found[0])
+      }
+
+      // Both verdicts, on the same row: the node took it, and the node no longer has it.
+      const orphan = rowFor('2,911,301')
+      assert.match(orphan, /accepted/)
+      assert.match(orphan, /orphaned/)
+      // The count is the node's own, sign and all. -1 is Core's signal for a block it holds that is
+      // not on the active chain, and rendering it as 1 would say the opposite of what it means.
+      assert.match(orphan, /-1 conf/)
+
+      // NULL IS NOT ZERO. The rejected block was never in any node's index, so micro-pool leaves it
+      // pending with no count; a table that printed `0 conf` there would be asserting the node has
+      // the block and has reorged it out, which is a different and much worse fact.
+      const unchecked = rowFor('2,911,402')
+      assert.match(unchecked, /not checked yet/)
+      assert.doesNotMatch(unchecked, /\bconf\b/)
     },
   )
 })

@@ -18,14 +18,17 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Failed, Loading } from '../components/states.tsx'
 import {
+  ABSENCE_DOGECOIN,
+  ABSENCE_PAYOUTS,
   formatCount,
   formatDifficulty,
   formatFee,
   formatHashrate,
   formatWindow,
+  mergedUnavailability,
   NOT_IMPLEMENTED,
 } from '../lib/format.ts'
-import type { PoolChainStatus } from '../lib/pool.ts'
+import type { MergedChainStatus, PoolChainStatus } from '../lib/pool.ts'
 import { defaultChain, usePoolStatus } from '../lib/status.tsx'
 
 export function MinePage() {
@@ -33,6 +36,10 @@ export function MinePage() {
   const status = resource.data
   const [chosen, setChosen] = useState<string | null>(null)
   const chain = chains.find((c) => c.chain === (chosen ?? defaultChain(chains))) ?? null
+  // Whether this deployment merge-mines anything AT ALL, which is a different question from whether
+  // it is succeeding at it. Configured-and-broken still means the absences list must not say the
+  // pool cannot do it — the panel below says what is actually happening, in the state it is in.
+  const mergesSomething = chains.some((c) => c.merged !== null)
 
   return (
     <div className="pl-page">
@@ -58,17 +65,28 @@ export function MinePage() {
         tells them whether their machine will connect. The list is in src/lib/format.ts so this page
         and the tests read the same words.
 
-        The `Payouts` entry is FILTERED OUT the moment the service reports payouts implemented,
-        rather than surviving as a stale paragraph on a page whose headline notice has already
-        gone. The other four are properties of the protocol and of the deployment, are not things
-        `/v1/pool` reports, and are therefore stated unconditionally.
+        TWO ENTRIES ARE FILTERED OUT WHEN THE SERVICE CONTRADICTS THEM, and the rest are properties
+        of the protocol and of the deployment that no response could contradict.
+
+        `Payouts` goes the moment the service reports payouts implemented, rather than surviving as
+        a stale paragraph on a page whose headline notice has already gone.
+
+        `Dogecoin as a chain of its own` goes the moment ANY chain reports a `merged` object — not
+        when one reports `committed: true`. The entry's claim is that this deployment merge-mines
+        nothing, and a configured aux chain whose node is still syncing makes that false while the
+        panel below is already explaining the real state. Leaving both on screen would have the page
+        deny a thing it is simultaneously reporting on.
       */}
       <section className="pl-section" aria-labelledby="pl-absent">
         <h2 className="pl-h2" id="pl-absent">
           What this pool does not do
         </h2>
         <dl className="pl-deflist">
-          {NOT_IMPLEMENTED.filter((item) => !(payoutsImplemented && item.what === 'Payouts')).map((item) => (
+          {NOT_IMPLEMENTED.filter(
+            (item) =>
+              !(payoutsImplemented && item.what === ABSENCE_PAYOUTS) &&
+              !(mergesSomething && item.what === ABSENCE_DOGECOIN),
+          ).map((item) => (
             <div className="pl-deflist__row" key={item.what}>
               <dt className="pl-deflist__term">{item.what}</dt>
               <dd className="pl-deflist__desc">{item.instead}</dd>
@@ -298,6 +316,34 @@ function ConnectCard({ chain }: { chain: PoolChainStatus }) {
           <code className="cf-num">{chain.algorithm}</code>
         </dd>
 
+        {/*
+          THE MERGED CHAIN IS MENTIONED HERE BECAUSE IT CHANGES NOTHING A MINER TYPES.
+
+          That is the whole point and it is the thing most easily misread. There is no second
+          address, no second port, no second worker and no extra hashrate: the pool commits the
+          Dogecoin header into the Litecoin coinbase, so a miner already pointed here is already
+          merge-mining. A reader who was told about DOGE and then given no configuration for it will
+          otherwise go looking for the part they missed.
+
+          `committed` is stated in the same breath, because "you are also mining DOGE" and "you would
+          also be mining DOGE if its node were up" are different sentences and only one of them is
+          true at a time.
+        */}
+        {chain.merged && (
+          <>
+            <dt className="pl-kv__key">Also mining</dt>
+            <dd className="pl-kv__val">
+              {chain.merged.name} ({chain.merged.asset}), merged into this chain&rsquo;s work.{' '}
+              <strong>Nothing to configure</strong> — no second address, no second port, and no extra
+              hashrate. Solving a {chain.name} block here can solve a {chain.merged.name} one at the
+              same instant.{' '}
+              {chain.merged.committed
+                ? 'The work you are being handed right now carries it.'
+                : `It is not happening at the moment: ${mergedUnavailability(chain.merged.unavailability, chain.merged.name)}`}
+            </dd>
+          </>
+        )}
+
         <dt className="pl-kv__key">Username</dt>
         <dd className="pl-kv__val">
           {/*
@@ -388,6 +434,79 @@ function ChainPanel({ chain }: { chain: PoolChainStatus }) {
         <dt className="pl-kv__key">Network difficulty</dt>
         <dd className="pl-kv__val cf-num">{formatDifficulty(chain.networkDifficulty)}</dd>
       </dl>
+
+      {chain.merged && <MergedPanel merged={chain.merged} parent={chain} />}
+    </div>
+  )
+}
+
+/**
+ * The second chain this one's work is worth, and whether that is currently true.
+ *
+ * ── THE THREE STATES ARE RENDERED AS THREE, AND THE MIDDLE ONE IS WHY THIS EXISTS ─────────────
+ *
+ * This component is only mounted when `merged` is non-null, so it renders the second and third
+ * states: configured-and-committing, and configured-and-not. Nothing distinguishes them in any
+ * other number on this page — a pool whose dogecoind is in initial block download mines Litecoin
+ * exactly as well as one whose dogecoind is healthy, reports the same hashrate, the same shares and
+ * the same workers, and simply stops being worth DOGE. `micro-pool`'s own README calls that failing
+ * by absence, and a panel that showed "mining DOGE" for the middle state would be telling a miner
+ * they are earning an asset they are not.
+ *
+ * The height and difficulty are shown ONLY while it is committing. They come from the aux block the
+ * pool is currently building on, and a stale pair beside a node that has stopped answering is worse
+ * than no pair — it is a screen that looks live.
+ */
+function MergedPanel({ merged, parent }: { merged: MergedChainStatus; parent: PoolChainStatus }) {
+  return (
+    <div className="pl-merged">
+      <h4 className="pl-h4">
+        Merged: {merged.name} <span className="pl-dim">({merged.chain})</span>
+      </h4>
+      <p className="pl-status">
+        {/* Icon, word and colour — never colour alone, for the reason tokens.css records above. */}
+        <span className={`cf-status ${merged.committed ? 'cf-status--good' : 'cf-status--warn'}`}>
+          <span className="cf-status__glyph" aria-hidden="true">
+            {merged.committed ? '●' : '▲'}
+          </span>
+          {merged.committed
+            ? `Committed into ${parent.name} work`
+            : `Configured, not being mined`}
+        </span>
+      </p>
+
+      {merged.committed ? (
+        <dl className="pl-kv">
+          <dt className="pl-kv__key">{merged.name} height</dt>
+          <dd className="pl-kv__val cf-num">
+            {merged.height === null ? 'unknown' : formatCount(merged.height)}
+          </dd>
+
+          <dt className="pl-kv__key">{merged.name} difficulty</dt>
+          <dd className="pl-kv__val cf-num">
+            {formatDifficulty(merged.networkDifficulty)}
+            {/*
+              Said beside the number rather than left to be inferred. It is the aux chain's target
+              expressed against the PARENT'S proof of work, which is the only unit it means anything
+              in — the two numbers on this card are directly comparable, and their ratio is how much
+              rarer an aux block is for the same hashing. A reader who compared it against a figure
+              from a Dogecoin explorer would be comparing two different measurements.
+            */}
+            <span className="pl-dim"> · measured on {parent.algorithm}, like the one above</span>
+          </dd>
+        </dl>
+      ) : (
+        <p className="pl-note pl-note--warn" role="status">
+          <span className="pl-note__icon" aria-hidden="true">
+            ▲
+          </span>
+          <span>
+            {mergedUnavailability(merged.unavailability, merged.name)} {parent.name} mining is
+            unaffected — every number on this card is still true, and this is the one thing that is
+            not happening.
+          </span>
+        </p>
+      )}
     </div>
   )
 }
