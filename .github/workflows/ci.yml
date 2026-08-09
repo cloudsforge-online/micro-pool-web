@@ -73,41 +73,20 @@ jobs:
           token: ${{ secrets.ESTATE_READ_TOKEN || github.token }}
 
       # micro-pool, for test/pool-contract.test.ts. Every response shape this bundle reads was
-      # taken off that service's handlers; checking it out is what stops those types becoming a
-      # description of an API that has since changed.
+      # taken off that service's handlers, and so is the answer to which of its routes take a
+      # credential; checking it out is what stops both becoming a description of an API that has
+      # since changed. It is read from `main` and not from a pin, because a pin would go on
+      # reporting green against a copy the estate stopped deploying.
       #
-      # `fetch-depth: 0` because THE SERVICE IS NOT ON `main` YET. Checked on 2026-08-09:
-      # cloudsforge-online/micro-pool's default branch holds a LICENCE and a .gitignore and nothing
-      # else — the whole service is on `feat/stratum-v1-pool`, which is pull request #1 and still
-      # open. A depth-1 checkout of main therefore produces a directory with no `src/` in it, the
-      # contract test skips, and the gate below fails naming the wrong cause.
+      # The fallback that used to follow this step — take `feat/stratum-v1-pool` when main has no
+      # `src/server.ts` — is deleted, as its own comment asked. That pull request is micro-pool#1
+      # and it merged; the branch, the `fetch-depth: 0` it needed and the warning it printed are all
+      # answering a question nobody is asking now.
       - uses: actions/checkout@v4
         with:
           repository: cloudsforge-online/micro-pool
           path: pool
-          fetch-depth: 0
           token: ${{ secrets.ESTATE_READ_TOKEN || github.token }}
-
-      # And the branch is taken ONLY when main does not have the service. This is deliberately not
-      # a pinned `ref:` on the checkout above: a pin would keep reading the branch after it merged,
-      # so the day micro-pool#1 lands this repository would be checking its types against a stale
-      # copy while believing it was checking main. Written as a fallback instead, it becomes a
-      # no-op the moment the service reaches main and the warning stops being printed by itself.
-      - name: Take micro-pool's open pull request, but only while it is open
-        run: |
-          set -euo pipefail
-          if [ -f pool/src/server.ts ]; then
-            echo "ok: micro-pool's service is on its default branch"
-            exit 0
-          fi
-          git -C pool checkout --quiet origin/feat/stratum-v1-pool -- . 2>/dev/null || {
-            echo "::error::micro-pool has no src/server.ts on main and no feat/stratum-v1-pool " \
-                 "branch either. If the pull request merged, delete this step."
-            exit 1
-          }
-          echo "::warning::micro-pool's service is not on main yet " \
-               "(cloudsforge-online/micro-pool#1 is open), so the response shapes were checked " \
-               "against that pull request's head. Delete this step when it merges."
 
       # Pinned, because the checkout lives at pool-web/ and the action looks for the packageManager
       # field in the workspace root, where there is no package.json.
@@ -149,10 +128,20 @@ jobs:
           # A skip is reported by the runner as a pass. Fail if either file reported one.
           out=$(node --import tsx --import @cloudsforge/ui/test-loader --test \
                   test/brand-chrome.test.ts test/pool-contract.test.ts 2>&1 || true)
+          # THE SUMMARY LINE IS READ THROUGH TWO LAYERS OF REPORTER INCIDENTAL DETAIL, and both were
+          # measured rather than guessed:
+          #
+          #   - WHICH PREFIX. Piped output is TAP on Node 22 (`# skipped 1`) and `spec` on Node 24
+          #     (`ℹ skipped 1`). A pattern that knows only the TAP form goes silent the day
+          #     `node-version:` above moves — the gate failing exactly as the thing it guards fails.
+          #   - COLOUR. The spec reporter emits the line as `\e[34mℹ skipped 1\e[39m`, so `^ℹ` does
+          #     not match it. Stripped first, because a gate that cannot see a skip reports a pass.
+          #
           # A here-string rather than a pipe: `grep -q` exits on its first match, the producer then
           # writes into a closed pipe, and `pipefail` promotes that SIGPIPE to a failed step — a
           # gate that fails for no reason and passes on re-run teaches re-running instead of reading.
-          if grep -qE '^# skipped [1-9]' <<<"$out"; then
+          plain=$(perl -pe 's/\e\[[0-9;]*m//g' <<<"$out")
+          if grep -qE '^(# |ℹ )skipped [1-9]' <<<"$plain"; then
             printf '%s\n' "$out"
             echo "::error::a cross-repository test skipped on the runner, where the sibling is present"
             exit 1
@@ -234,7 +223,9 @@ jobs:
       - name: No credential can reach the image, and nothing is proxied
         # An image is built once and promoted, so a credential inside one is a published credential.
         # There is also nothing to authenticate with: micro-pool's read API takes no bearer token on
-        # any route.
+        # any route this bundle calls. Its one credentialled route mints browser-mining tickets and
+        # belongs to micro-hub-web's /mine; nothing here calls it, and test/pool-contract.test.ts
+        # checks that route by route.
         run: |
           set -uo pipefail
           directives=$(grep -v '^[[:space:]]*#' nginx.conf)
@@ -265,7 +256,8 @@ jobs:
 
       - name: Nothing is gated behind a session
         # Every micro-pool route this bundle calls is anonymous, and `account` is a query parameter
-        # rather than an authenticated subject. A gate would make a browser prove who it is before
+        # rather than an authenticated subject. The service's ticket route is not one of them. A
+        # gate would make a browser prove who it is before
         # showing facts that are public by construction. Asserted as an ABSENCE, because the reflex
         # is to add one back — and comments are stripped because src/app.tsx NAMES what it refuses.
         run: |

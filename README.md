@@ -62,8 +62,8 @@ in the body.
 
 ## What it talks to
 
-`micro-pool`, and nothing else. Four routes, all `GET`, all anonymous — the service takes no
-credential on any of them, and this bundle sends none.
+`micro-pool`, and nothing else. Four routes, all `GET`, all anonymous — none of them reads a
+credential, and this bundle sends none.
 
 | Path | Query | Reads |
 | --- | --- | --- |
@@ -86,6 +86,20 @@ for somebody who cloned only this one. CI checks it out and **fails the job if t
 `/livez`, `/readyz` and `/metrics` are deliberately not called. A browser polling them would report
 on whichever process it happened to reach through the gateway, which says nothing about whether the
 pool is accepting stratum connections — that is a different process on a different port.
+
+### The eighth route, which this bundle does not call
+
+`POST /v1/pool/ticket` is the only route on micro-pool that reads an `Authorization` header. It
+verifies an estate access token and mints the single-use ticket a browser spends on the WebSocket
+mining transport (micro-org#289), and the page that spends it is **micro-hub-web's `/mine`**, which
+is behind the estate session already. Browser mining is not on this surface: this is the anonymous
+pool console, it has no sign-in, no token store and no refresh, and its readers are people without
+estate accounts.
+
+That makes "micro-pool takes no credential" a claim that has to be made per route rather than per
+service, and `test/pool-contract.test.ts` now makes it that way — it splits `buildRoutes()` into one
+block of source per route and fails separately when a route this bundle calls grows an authority
+check, and when a credentialled route appears that nobody has decided about.
 
 ### Amounts and ids are strings on both sides
 
@@ -238,7 +252,7 @@ things they forbid and a naive grep would match the explanation.
 | File | Holds |
 | --- | --- |
 | `honesty.test.ts` | no page renders a balance, an estimate, a next payout or a date, with full data stubbed in |
-| `pool-contract.test.ts` | every field and route this bundle names exists in `pool/src/server.ts` |
+| `pool-contract.test.ts` | every field and route this bundle names exists in `pool/src/server.ts`, and every route it calls reads no credential |
 | `routes.test.ts` | the route table, the router and nginx agree; nothing is gated; the SPA fallback keeps its 404 |
 | `no-build-time-config.test.ts` | no `import.meta.env`, no hostname literal, no credential, no stratum port outside `hosts.ts` |
 | `hosts.test.ts` | both branches of the registry correction, including the one that is dead today |

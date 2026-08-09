@@ -5,26 +5,36 @@
  * THE ROUTES, AS THEY ACTUALLY EXIST — read off `pool/src/server.ts`'s `buildRoutes()`, not off a
  * description of it. The brief this frontend was written from named `/v1/workers/<address>`, which
  * IS NOT A ROUTE THIS SERVICE SERVES; asking for it returns the 404 envelope. The real surface is
- * five routes, three of which are platform probes this bundle deliberately does not call:
+ * eight routes. Four are the anonymous reads this module is made of; three are platform probes; one
+ * takes a credential and belongs to another surface entirely:
  *
- * | Route                  | Query                        | Called here |
- * | ---                    | ---                          | ---         |
- * | `GET /v1/pool`         | —                            | yes         |
- * | `GET /v1/pool/blocks`  | `chain`, `limit` (max 200)   | yes         |
- * | `GET /v1/pool/workers` | `chain`, `account`           | yes         |
- * | `GET /v1/pool/shares`  | `chain`, `account`, `limit` (max 1000) | yes |
- * | `GET /livez`           | —                            | no          |
- * | `GET /readyz`          | —                            | no          |
- * | `GET /metrics`         | —                            | no          |
+ * | Route                    | Query                        | Credential | Called here |
+ * | ---                      | ---                          | ---        | ---         |
+ * | `GET /v1/pool`           | —                            | none       | yes         |
+ * | `GET /v1/pool/blocks`    | `chain`, `limit` (max 200)   | none       | yes         |
+ * | `GET /v1/pool/workers`   | `chain`, `account`           | none       | yes         |
+ * | `GET /v1/pool/shares`    | `chain`, `account`, `limit` (max 1000) | none | yes    |
+ * | `GET /livez`             | —                            | none       | no          |
+ * | `GET /readyz`            | —                            | none       | no          |
+ * | `GET /metrics`           | —                            | none       | no          |
+ * | `POST /v1/pool/ticket`   | —                            | **bearer** | no          |
  *
- * The last three are the service's own platform probes, for a supervisor and a scrape target. A
- * browser rendering `/readyz` as a status light would be a second, worse status page beside the
- * estate's real one, and `/metrics` is an unbounded Prometheus text body. `/v1/pool` already
- * carries the per-chain `ready` flag, which is the same fact in the shape a page needs.
+ * `/livez`, `/readyz` and `/metrics` are the service's own platform probes, for a supervisor and a
+ * scrape target. A browser rendering `/readyz` as a status light would be a second, worse status
+ * page beside the estate's real one, and `/metrics` is an unbounded Prometheus text body.
+ * `/v1/pool` already carries the per-chain `ready` flag, which is the same fact in the shape a page
+ * needs.
  *
- * `account` IS A QUERY PARAMETER AND NOT AN AUTHENTICATED SUBJECT. Anybody may read anybody's
- * shares; that is the same posture as every public pool and as a block explorer, and micro-pool's
- * own server file says so. Nothing in this module sends a credential.
+ * `POST /v1/pool/ticket` is the one route on this service that reads an `Authorization` header. It
+ * verifies an estate access token and mints the single-use ticket a browser spends on the WebSocket
+ * mining transport (micro-org#289), and it is micro-hub-web's `/mine` that calls it. Browser mining
+ * needs a session; this surface has none and acquires none, so the ticket route is absent from this
+ * module by decision rather than by oversight — `test/pool-contract.test.ts` asserts that decision
+ * route by route rather than trusting this table.
+ *
+ * `account` IS A QUERY PARAMETER AND NOT AN AUTHENTICATED SUBJECT on all four reads. Anybody may
+ * read anybody's shares; that is the same posture as every public pool and as a block explorer, and
+ * micro-pool's own server file says so. Nothing in this module sends a credential.
  * ════════════════════════════════════════════════════════════════════════════════════════════════
  */
 import { api, type RequestOptions } from './api.ts'
