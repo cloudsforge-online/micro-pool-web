@@ -150,6 +150,11 @@ test('EVERY FIELD THIS BUNDLE READS IS A FIELD THE SERVICE SENDS', (t) => {
   // than as a defect here.
   for (const name of [
     'PoolChainStatus',
+    // The NESTED one is listed by name of its own, because `fieldsOf('PoolChainStatus')` sees
+    // `merged` and stops there — a rename inside the merged object would typecheck here and arrive
+    // as `undefined`, which renders as a chain that is configured, not committing, and giving no
+    // reason. That is indistinguishable on screen from a real outage.
+    'MergedChainStatus',
     'PoolStatus',
     'PoolBlock',
     'PoolBlocks',

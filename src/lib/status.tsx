@@ -99,3 +99,37 @@ export function usePoolStatus(): PoolStatusValue {
 export function defaultChain(chains: readonly PoolChainStatus[]): string | null {
   return chains.length === 0 ? null : (chains[0]?.chain ?? null)
 }
+
+/** A chain a block could have been found on, and how it was found. */
+export interface MinedChain {
+  readonly chain: string
+  readonly name: string
+  /** True when this chain has no shares of its own — its blocks came out of a parent's work. */
+  readonly merged: boolean
+}
+
+/**
+ * Every chain this pool can have won a BLOCK on, which is a wider set than the chains it serves.
+ *
+ * ── TWO DIFFERENT SETS, AND THE SERVICE ENFORCES THE DIFFERENCE ───────────────────────────────
+ *
+ * `pool_blocks` is keyed by the chain the block is on and `pool_shares` by the chain the share is
+ * on, so micro-pool accepts an aux chain on `/v1/pool/blocks` and refuses it with a 400 on
+ * `/v1/pool/shares` and `/v1/pool/workers`. That is not an inconsistency to paper over here: a
+ * miner's Dogecoin share history IS their Litecoin share history, because the Litecoin work is what
+ * produced the Dogecoin block, and a page that offered `doge` in the workers form would be asking a
+ * question with no answer.
+ *
+ * So this is used by the blocks page ALONE. Everything about work in flight — the connection
+ * details, the chain selector on `/workers`, the panels of live rates — is keyed off `chains`,
+ * where an aux chain has no listener to appear in.
+ *
+ * The parents come first and each aux chain follows its own parent, so the order is stable and
+ * reads as the containment it is.
+ */
+export function minedChains(chains: readonly PoolChainStatus[]): readonly MinedChain[] {
+  return chains.flatMap((chain) => [
+    { chain: chain.chain, name: chain.name, merged: false },
+    ...(chain.merged ? [{ chain: chain.merged.chain, name: chain.merged.name, merged: true }] : []),
+  ])
+}

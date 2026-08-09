@@ -406,6 +406,32 @@ body {
   margin: 0;
 }
 
+/*
+  The merged chain, INSIDE its parent's card and set off by a rule.
+
+  Nested rather than given a card of its own, because a card of its own in the same grid would read
+  as a third chain a miner could point at — and there is no address to point at it with. The rule
+  and the indent say "a property of the thing above" in the one way that survives a reader skimming
+  the grid at a glance.
+*/
+.pl-merged {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cf-space-xs);
+  margin-top: var(--cf-space-2xs);
+  padding-top: var(--cf-space-sm);
+  border-top: 1px solid var(--cf-line);
+}
+
+.pl-h4 {
+  margin: 0;
+  font-size: var(--cf-text-sm);
+  line-height: var(--cf-leading-snug);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cf-fg-dim);
+}
+
 /* A key/value list. Two columns where there is room, stacked where there is not. */
 .pl-kv {
   display: grid;

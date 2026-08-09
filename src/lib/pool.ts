@@ -58,6 +58,53 @@ export interface StratumEndpoint {
 }
 
 /**
+ * A chain being mined AS A SECOND RESULT OF THE PARENT'S WORK, and whether that is happening.
+ *
+ * ── THIS OBJECT EXISTS BECAUSE MERGED MINING FAILS SILENTLY ───────────────────────────────────
+ *
+ * Dogecoin is merge-mined with Litecoin: a miner points at Litecoin, and the pool commits a
+ * Dogecoin block header into the Litecoin coinbase, so the same work is worth two things at once.
+ * The failure mode is that it stops being worth the second one and NOTHING ELSE CHANGES. A
+ * dogecoind in initial block download refuses `createauxblock`; the pool then mines Litecoin
+ * exactly as well as it did before, every number on this page is identical, and the only difference
+ * is that a miner who was told they earn DOGE is not earning DOGE.
+ *
+ * So there are three states here and not two, and this site renders all three separately:
+ *
+ *   - `merged` is **null** — no aux chain configured. Nothing is claimed and nothing is wrong.
+ *   - `committed: false` — configured and NOT happening, with `unavailability` saying why in one
+ *     word. This is the state a page must not round up to the third one.
+ *   - `committed: true` — the jobs miners are holding right now carry a Dogecoin commitment.
+ *
+ * `committed` is read off the pool's job registry rather than off its configuration, so it is a
+ * statement about the work in flight and not about an intention.
+ */
+export interface MergedChainStatus {
+  readonly chain: string
+  readonly name: string
+  readonly asset: string
+  /** True only while the jobs handed to miners actually carry this chain's commitment. */
+  readonly committed: boolean
+  /**
+   * Why it is not committing, in the service's own vocabulary: `syncing`, `no-peers`, `refused` or
+   * `unreachable`. Null when it is committing — and it is reported even when a block is present,
+   * because a stale block beside a node that has since started refusing is a state worth seeing.
+   *
+   * Typed as a bare `string` for the same reason `chain` is: it is the service's enumeration, and a
+   * union repeated here would make a new reason a type error in the repository that merely displays
+   * it. Anything unrecognised falls through to being shown verbatim.
+   */
+  readonly unavailability: string | null
+  readonly height: number | null
+  /**
+   * The aux chain's difficulty, computed on the PARENT'S algorithm — the only unit it is meaningful
+   * in, since the proof is the parent's proof. Beside the parent's own difficulty it is roughly how
+   * much rarer a Dogecoin block is for the same hashing.
+   */
+  readonly networkDifficulty: number | null
+}
+
+/**
  * One chain's live state, exactly as `/v1/pool` renders it.
  *
  * `chain` is `'btc' | 'ltc'` in the service's own types (`pool/src/chains.ts`), and it is typed as
@@ -110,6 +157,15 @@ export interface PoolChainStatus {
   readonly workersInWindow: number
   /** Hashes per second, already converted per algorithm by the service. */
   readonly hashrateEstimate: number
+  /**
+   * The chain this one's work is ALSO worth, or null when there is not one.
+   *
+   * Null is the ordinary answer and is not the same as `committed: false` — the first says nobody
+   * configured merged mining, the second says somebody did and it is not working. A page that
+   * collapsed the two would either invent an absence or hide a fault. There is deliberately no
+   * `hashrateEstimate` inside it: it would be the same shares and the same units as the one above.
+   */
+  readonly merged: MergedChainStatus | null
 }
 
 /** `GET /v1/pool`. */
@@ -158,6 +214,26 @@ export interface PoolBlock {
    */
   readonly submitStatus: string
   readonly submitDetail: string | null
+  /**
+   * WHAT THE NODE SAID LATER, WHICH IS A DIFFERENT CLAIM FROM `submitStatus` AND THE ONE THAT
+   * DECIDES WHETHER THE REWARD EXISTS AT ALL.
+   *
+   * `pending`, `matured` or `orphaned` (`pool/src/maturity.ts`), typed as a string because it is
+   * the service's enumeration. A submission the node accepted onto its tip can still lose a reorg
+   * well inside the coinbase maturity window — 100 confirmations on Litecoin, **240 on Dogecoin** —
+   * and an orphaned block's coinbase is never spendable by anybody. A page that showed only
+   * `accepted` would be reporting a block that no longer exists as one this pool found.
+   *
+   * Every block is `pending` for the first four hours, so this is the ordinary state and not an
+   * alarming one.
+   */
+  readonly maturityStatus: string
+  /**
+   * The node's own count, and **negative when the node holds the block but it is off the active
+   * chain**. Null when the watcher has not managed to ask yet — which is not zero, and must not be
+   * rendered as one.
+   */
+  readonly confirmations: number | null
 }
 
 export interface PoolBlocks {

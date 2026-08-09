@@ -30,7 +30,7 @@ import { createElement } from 'react'
 import { App } from '../src/app.tsx'
 import { NOT_PAID_HEADLINE } from '../src/lib/format.ts'
 import { withScreen, type Routes, type Screen } from './dom.ts'
-import { poolBlocks, poolShares, poolStatus, poolWorkers } from './fixtures.ts'
+import { LTC, mergedWith, poolBlocks, poolShares, poolStatus, poolWorkers } from './fixtures.ts'
 
 const app = () => createElement(App)
 
@@ -123,6 +123,27 @@ test('a miner’s own record carries no denominated amount at all', async () => 
       assert.ok(!/solved a block[^.]*\d/.test(screen.text()))
     },
   )
+})
+
+test('MERGED MINING DOUBLES THE CHAINS AND NOT THE PROMISES', async () => {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // The temptation this test exists to refuse. "Your Litecoin work is also worth Dogecoin" is TRUE
+  // and it is the most exciting sentence on the site, and it sits one word away from being a claim
+  // about money: a pool that pays nobody pays them nothing in two assets rather than one. The
+  // merged panel is therefore held to exactly the standard the rest of the page is — a statement
+  // about BLOCKS, never about a miner's share of one.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  for (const url of ADDRESSES) {
+    await withScreen(
+      app(),
+      { url, routes: loudRoutes({ 'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(LTC)] }) } }) },
+      async (screen) => {
+        assertMakesNoClaim(screen, `${url} with a committing merged chain`)
+        // And the standing statement is untouched by the second chain existing.
+        assert.ok(screen.text().includes(NOT_PAID_HEADLINE))
+      },
+    )
+  }
 })
 
 test('the statement is on every address, including one that does not exist', async () => {

@@ -23,20 +23,36 @@ export const NOT_PAID_DETAIL =
   'miner is owed. Nothing settles that debt: there is no ledger credit, no balance and no payment ' +
   'mechanism of any kind. Hashrate pointed here earns nothing today.'
 
+/**
+ * The two absences that are CONDITIONAL, named once so the list and the filter cannot drift.
+ *
+ * Everything else in `NOT_IMPLEMENTED` is a property of the protocol or of the deployment that no
+ * response could contradict. These two are facts the service reports, so the page that renders the
+ * list branches on the API rather than on a constant — and a filter matching a string literal that
+ * somebody later edits here would fail open, leaving a stale absence on screen beside the live
+ * panel that contradicts it.
+ */
+export const ABSENCE_PAYOUTS = 'Payouts'
+export const ABSENCE_DOGECOIN = 'Dogecoin as a chain of its own'
+
 /** What is NOT here, said plainly rather than left to be discovered. See `pool/README.md`. */
 export const NOT_IMPLEMENTED: readonly { readonly what: string; readonly instead: string }[] = [
   {
-    what: 'Payouts',
+    what: ABSENCE_PAYOUTS,
     instead:
       'Shares and blocks are recorded. Nothing credits a ledger or moves a balance, and there is ' +
       'no payouts table to fill in later.',
   },
   {
-    what: 'Dogecoin',
+    // Shown only while no chain reports a `merged` object — the pool CAN merge-mine Dogecoin now,
+    // and the last sentence would be false on a deployment where an operator has configured it.
+    // `mine.tsx` drops this entry the moment the API says otherwise.
+    what: ABSENCE_DOGECOIN,
     instead:
-      'Refused by name, not missing. DOGE is merge-mined with Litecoin through AuxPoW, which this ' +
-      'pool does not build — so it would hand out work whose solutions the Dogecoin network throws ' +
-      'away. The service will not start with it configured.',
+      'Refused by name, not missing. There is no Dogecoin stratum port here and there never will ' +
+      'be: DOGE is merge-mined with Litecoin through AuxPoW, so it is a second thing Litecoin work ' +
+      'is worth rather than a chain to point a miner at. This deployment has no aux chain ' +
+      'configured, so nothing is being merge-mined on it.',
   },
   {
     what: 'Stratum v2',
@@ -53,6 +69,37 @@ export const NOT_IMPLEMENTED: readonly { readonly what: string; readonly instead
     instead: 'PPLNS only. There is no solo mode and no pay-per-share mode.',
   },
 ]
+
+/**
+ * Why a configured merged chain is not being merged, as a sentence a miner can act on.
+ *
+ * ── ONE WORD IS NOT AN EXPLANATION, AND THIS IS THE PAGE THAT OWES ONE ────────────────────────
+ *
+ * micro-pool reports `syncing`, `no-peers`, `refused` or `unreachable`, which are precise and mean
+ * nothing to somebody who has just been told they are not earning an asset. Each is expanded here
+ * into what is actually true of the pool and, where it exists, how long it lasts — because the
+ * difference between "wait" and "tell an operator" is the whole value of publishing the reason.
+ *
+ * An unrecognised word is rendered VERBATIM inside a sentence rather than swallowed. The service is
+ * free to grow a fifth reason, and a page that dropped it would go back to reporting the state this
+ * whole field exists to make visible: not committing, no reason given.
+ */
+export function mergedUnavailability(reason: string | null, name: string): string {
+  switch (reason) {
+    case 'syncing':
+      return `The ${name} node is still downloading its chain. Until it has caught up it will not hand out work to merge, and it does not know how long that will take.`
+    case 'no-peers':
+      return `The ${name} node has no peers. It is running, but a block found against the work it would give is a block nobody could be told about.`
+    case 'refused':
+      return `The ${name} node refused to give the pool work to merge. It is reachable and it is answering — this needs an operator rather than time.`
+    case 'unreachable':
+      return `The pool cannot reach the ${name} node at all. This needs an operator rather than time.`
+    case null:
+      return `The pool did not say why, which is itself worth reporting to an operator.`
+    default:
+      return `The pool gave the reason “${reason}”, which this page does not have a longer explanation for.`
+  }
+}
 
 /**
  * Hashes per second, with a unit.
