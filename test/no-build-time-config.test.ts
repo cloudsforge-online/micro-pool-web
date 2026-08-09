@@ -15,11 +15,12 @@
  *
  * ── THE SECOND HALF: THIS BUNDLE CARRIES NO CREDENTIAL AND SENDS NONE ─────────────────────────
  *
- * micro-pool's read API takes no bearer token on any route (`pool/src/server.ts`), so there is
- * nothing to send and nothing to store. Asserted as an ABSENCE, because the reflex when a request
- * 401s is to add a header, and the tempting place to add it — an `Authorization` in nginx.conf's
- * proxy — puts a CloudsForge service credential inside an image that is built once and promoted to
- * every environment, which is a published credential.
+ * micro-pool's read API takes no bearer token on any route (`pool/src/server.ts`), and its one
+ * credentialled route — the browser-mining ticket — is micro-hub-web's to call, not this bundle's.
+ * So there is nothing to send and nothing to store. Asserted as an ABSENCE, because the reflex when
+ * a request 401s is to add a header, and the tempting place to add it — an `Authorization` in
+ * nginx.conf's proxy — puts a CloudsForge service credential inside an image that is built once and
+ * promoted to every environment, which is a published credential.
  * ════════════════════════════════════════════════════════════════════════════════════════════════
  */
 import assert from 'node:assert/strict'

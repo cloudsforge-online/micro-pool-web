@@ -9,12 +9,18 @@
  * ── Nothing here is gated, and there is nothing to gate it with ────────────────────────────────
  *
  * There is no `AuthProvider` in this repository and no route guard, because micro-pool takes no
- * bearer token on any route it serves (`pool/src/server.ts`): `/v1/pool`, `/v1/pool/blocks`,
+ * bearer token on any route this bundle calls (`pool/src/server.ts`): `/v1/pool`, `/v1/pool/blocks`,
  * `/v1/pool/workers` and `/v1/pool/shares` are all anonymous reads, and `account` is a query
  * parameter rather than an authenticated subject. The only identity a miner has here is the stratum
  * username they typed into their own firmware, and the pool never checks it against anything — see
  * the "Your address is a label" section on the landing page. A sign-in on this surface would be a
  * gate in front of facts that are public by construction, guarding an account that does not exist.
+ *
+ * The service does have exactly one route that reads a credential — `POST /v1/pool/ticket`, which
+ * mints the ticket a browser needs to mine over the WebSocket transport (micro-org#289). It is
+ * micro-hub-web's `/mine` that calls it, on a surface that already has a session. Adding it here
+ * would mean adding the whole of what is missing above in order to reach one route, on a page whose
+ * readers do not have estate accounts. `test/pool-contract.test.ts` holds that line route by route.
  *
  * ── `PoolStatusProvider` wraps the shell, not each page ────────────────────────────────────────
  *

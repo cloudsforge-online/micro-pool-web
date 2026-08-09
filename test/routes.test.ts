@@ -139,7 +139,7 @@ test('the sitemap lists the routes a crawler should have, and NOT a miner’s ad
 })
 
 test('NOTHING ON THIS SURFACE IS GATED, AND THERE IS NOTHING TO GATE IT WITH', () => {
-  // micro-pool takes no bearer token on any route it serves, and `account` is a query parameter
+  // micro-pool takes no bearer token on any route this bundle calls, and `account` is a query parameter
   // rather than an authenticated subject. A guard here would put a login in front of facts that are
   // public by construction. Asserted as an absence, because the reflex is to add one back — and
   // comments are stripped first because src/app.tsx NAMES what it refuses in order to explain it.
