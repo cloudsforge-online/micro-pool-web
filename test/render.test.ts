@@ -12,7 +12,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createElement } from 'react'
+import { HUB_MINE_PATH, NOT_PAID_CLAUSE } from '@cloudsforge/ui'
 import { App } from '../src/app.tsx'
+import { hosts } from '../src/lib/hosts.ts'
 import { withScreen, type Routes } from './dom.ts'
 import {
   BTC,
@@ -543,6 +545,49 @@ test('there is no sign-in anywhere on this site', async () => {
       for (const word of ['sign in', 'sign up', 'log in', 'my account']) {
         assert.ok(!text.includes(word), `${url} offers "${word}"`)
       }
+    })
+  }
+})
+
+/*
+ * BROWSER MINING IS OFFERED FROM THE CHROME OF THE POOL'S OWN SITE.
+ *
+ * The owner's report was that starting a browser miner is "hidden deep in mining page, it should
+ * be easily found near the account on all pages". This surface was the sharpest case of it: the
+ * one page a stranger arrives at explains how to point firmware at the stratum endpoint and, until
+ * this control, never mentioned that a browser can hash for the same pool at all. The only way in
+ * was to already know Forge Hub has a `/mine` address.
+ *
+ * It is a LINK rather than a Start, and that is not a compromise: the ticket a browser miner needs
+ * is `POST /v1/pool/ticket`, the one micro-pool route an estate session unlocks, and this surface
+ * deliberately holds no session. A Start here could not be honoured.
+ */
+test('the chrome offers browser mining, on every page, as a link to the surface that holds it', async () => {
+  for (const url of [
+    'https://pool.cloudsforge.online/',
+    'https://pool.cloudsforge.online/blocks',
+    'https://pool.cloudsforge.online/nothing-here',
+  ]) {
+    await withScreen(app(), { url, routes: allRoutes() }, async (screen) => {
+      // Addressed by role and name, per doc 22 §2.4.3. The name is matched exactly because the
+      // landing page's own nav entry is called "Mine here" and a substring would take either.
+      const mine = screen.byRole('link', /^Mine$/)
+      assert.equal(
+        mine.getAttribute('href'),
+        `${hosts().hub}${HUB_MINE_PATH}`,
+        `${url} offers a mining control that does not point at Forge Hub’s mining address`,
+      )
+
+      // The sentence it carries is the pool's OWN payout answer, read from `GET /v1/pool` in the
+      // same run — not a constant in the design system and not a constant here. The fixture says
+      // payouts are not implemented, which is what the estate measured; a control that ignored the
+      // response would still carry the clause and would be wrong the day the response changes.
+      const described = screen.document.getElementById(mine.getAttribute('aria-describedby') ?? '')
+      assert.ok(described, `${url} renders a mining control nothing describes`)
+      assert.ok(
+        (described.textContent ?? '').includes(NOT_PAID_CLAUSE),
+        `${url} offers mining without the standing statement that nothing is paid for it`,
+      )
     })
   }
 })

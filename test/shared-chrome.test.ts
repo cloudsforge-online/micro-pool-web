@@ -114,6 +114,23 @@ test('THE BAR IS OUT ON PRODUCT GROUNDS, AND THE SHELL STATES THEM WITHOUT CITIN
   )
 })
 
+test('THE BAR BEING OUT DOES NOT TAKE BROWSER MINING WITH IT', () => {
+  // The three claims that keep `CloudsForgeBar` out are all claims about the ACCOUNT CONTROL it
+  // renders. None of them reaches `MiningControl`, which asks for no session, renders no account
+  // and — in the `elsewhere` phase this surface passes — is an anchor to another origin. Mounting
+  // it directly is what lets this surface keep the absence and still offer the thing the pool
+  // exists for. Without this test the next reader tidying the shell reads "the shared chrome is
+  // out on product grounds" and takes the mining control out with the bar.
+  assert.ok(imported().includes('MiningControl'), 'the shell does not mount the mining control')
+  assert.ok(imported().includes('miningOnHub'))
+  assert.ok(SHELL.includes('<MiningControl'))
+
+  // The live flag, not the default. This is the one surface that already reads `payoutsImplemented`
+  // off `GET /v1/pool`, so the control's sentence and `NotPaidNotice` are derived from one
+  // response and cannot disagree. `test/render.test.ts` asserts the rendered sentence.
+  assert.match(SHELL, /miningOnHub\([^)]*payoutsImplemented[^)]*\)/)
+})
+
 test('every estate link in the shell is composed by the REGISTRY, through this repository’s wrapper', () => {
   // There is no local correction any more — `hosts()` is a one-line pass to `cloudsforgeHosts()`.
   // The indirection stays because it is the seam a test can stub and because the day this surface
