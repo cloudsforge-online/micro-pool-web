@@ -18,10 +18,17 @@
  *
  * ── AND IT CHECKS ONE THING THAT IS NOT A FIELD NAME ──────────────────────────────────────────
  *
- * `payoutsImplemented: false` is a LITERAL in micro-pool's handlers, not a computed value. This
- * whole site's refusal to promise payment is derived from that flag, so the flag being real — and
- * being false because the service says so, not because this bundle assumes it — is the load-bearing
- * fact underneath `test/honesty.test.ts`.
+ * `payoutsImplemented` is DERIVED in micro-pool — `payouts.ts` ANDs the `CUSTODY_BACKING_CLOSED`
+ * interlock with whether an operator configured a payout minimum, and both handlers publish that
+ * one value rather than writing an answer of their own. This whole site's refusal to promise
+ * payment turns on the flag, so the flag being real — false because the service computed it, not
+ * because this bundle assumes it — is the load-bearing fact underneath `test/honesty.test.ts`.
+ *
+ * It was two `false` literals until micro-org#302 step 4 (2026-08-10), and this file asserted them.
+ * That assertion held only for as long as somebody kept typing the word: it could not tell a pool
+ * that cannot pay from one that can and says otherwise. What is checked now is the shape that makes
+ * the flip a consequence of the gates opening rather than a four-site edit somebody could get half
+ * right.
  *
  * ── AND ONE THING THAT USED TO BE A FLAT CLAIM AND IS NOW A SPLIT ONE ─────────────────────────
  *
@@ -180,17 +187,41 @@ test('PAYOUTS ARE NOT IMPLEMENTED, AND THE SERVICE IS WHERE THAT IS DECIDED', (t
   const src = service()
   if (!src) return t.skip('micro-pool is not checked out beside this repository')
 
-  // Two responses carry the flag and both hard-code it. When either becomes a computed value, or
-  // starts arriving true, this site stops saying it does not pay — which is the point of deriving
-  // it rather than writing it into the markup.
-  const literals = [...src.matchAll(/payoutsImplemented:\s*(\w+)/g)].map((m) => m[1])
-  assert.deepEqual(literals, ['false', 'false'])
+  // Two responses carry the flag, and NEITHER writes an answer of its own: both publish the value
+  // `payouts.ts` derived. micro-pool changed this on 2026-08-10 (micro-org#302 step 4) and this
+  // assertion changed with it — it used to demand two `false` literals, which was true for as long
+  // as somebody kept typing it and proved nothing about what the service could actually do.
+  //
+  // A literal reappearing here is the regression worth catching: it would be one handler promising
+  // settlement without the sink's agreement, which is precisely the shape that lets this site's
+  // notices go quiet while nothing behind them has changed.
+  const published = [...src.matchAll(/payoutsImplemented:\s*([\w.]+)/g)].map((m) => m[1])
+  assert.deepEqual(
+    published.filter((value) => value !== 'boolean'),
+    ['deps.payoutsImplemented', 'deps.payoutsImplemented'],
+    'a micro-pool handler is writing its own answer for payoutsImplemented instead of publishing the derived one',
+  )
 
-  // And the module behind it is still a set of types and a function that throws, rather than a
-  // settlement path nobody wired up. If this file grows a sink, the flag is what should change.
-  const payouts = join(SIBLINGS, 'pool/src/payouts.ts')
-  if (existsSync(payouts)) {
-    assert.match(readFileSync(payouts, 'utf8'), /throw/)
+  // And the derivation is the one this site's honesty rests on. `payoutsImplemented()` ANDs an
+  // interlock that is a reviewed code change with whether an operator configured a payout minimum,
+  // so a deployment cannot talk itself into settling by setting an environment variable. The
+  // interlock is what is false today; the configuration half is not something this repository gets
+  // to assert anything about.
+  const payoutsPath = join(SIBLINGS, 'pool/src/payouts.ts')
+  if (existsSync(payoutsPath)) {
+    const payouts = readFileSync(payoutsPath, 'utf8')
+    assert.match(
+      stripComments(payouts, 'ts'),
+      /CUSTODY_BACKING_CLOSED\s*=\s*false/,
+      'micro-pool opened the custody backing interlock; this site may now be understating what it does',
+    )
+    assert.match(
+      stripComments(payouts, 'ts'),
+      /function payoutsImplemented\([^)]*\)[^{]*\{\s*return CUSTODY_BACKING_CLOSED && \w+/,
+      'payoutsImplemented no longer derives from the interlock',
+    )
+    // A sink that refuses loudly rather than one that logs and carries on looking as though it paid.
+    assert.match(payouts, /throw/)
   }
 })
 
