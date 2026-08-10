@@ -46,7 +46,15 @@
  * and the local footer and the local apex correction that fed it are both deleted.
  * ════════════════════════════════════════════════════════════════════════════════════════════════
  */
-import { CloudsForgeFooter, CloudsForgeLogo, CookieBanner, MainRegion, SkipLink } from '@cloudsforge/ui'
+import {
+  CloudsForgeFooter,
+  CloudsForgeLogo,
+  CookieBanner,
+  MainRegion,
+  MiningControl,
+  SkipLink,
+  miningOnHub,
+} from '@cloudsforge/ui'
 import { applyHead, surfaceMeta } from '@cloudsforge/ui/seo'
 import { useEffect } from 'react'
 import { surface } from '@cloudsforge/ui/surfaces'
@@ -106,6 +114,30 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
+          {/*
+            BROWSER MINING, IN THE POSITION THE ACCOUNT OCCUPIES EVERYWHERE ELSE.
+
+            `MiningControl` is mounted directly rather than through `CloudsForgeBar`, because the
+            bar is out of this surface on the product grounds set out above and none of them apply
+            to this: it renders no account control, asks for no session, and reaches no route.
+
+            The gap it closes is this surface's, and it is the owner's report — starting a browser
+            miner was "hidden deep in mining page". This is the POOL's own site. Until now the one
+            page a stranger arrives at explained how to point firmware at the stratum endpoint and
+            never mentioned that a browser can hash for the same pool at all; the only way in was
+            to already know that Forge Hub has a `/mine` address.
+
+            `miningOnHub()` is the `elsewhere` phase, which is an anchor. The miner is a WebSocket
+            and two Web Workers on `hub.<apex>`, a different origin from this one, and the ticket
+            it needs (`POST /v1/pool/ticket`) is the one micro-pool route an estate session
+            unlocks — which this surface deliberately cannot obtain. So the honest control here is
+            a link to the surface that holds the session, not a Start this page could not honour.
+
+            The payout flag is the LIVE one from `usePoolStatus()` rather than the default. This is
+            the one surface that already reads it, so the sentence the control carries is derived
+            from the same response `NotPaidNotice` is derived from, and the two cannot disagree.
+          */}
+          <MiningControl {...miningOnHub(estate.hub, payoutsImplemented)} />
         </div>
       </header>
 
