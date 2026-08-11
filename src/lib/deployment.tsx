@@ -34,8 +34,13 @@
  *
  * ── WHY IT IS NOT A BUILD ARG EITHER ──────────────────────────────────────────────────────────
  *
- * `test/no-build-time-config.test.ts`, which forbids `import.meta.env`, `VITE_*` and `process.env`
- * anywhere in `src/`: the image is built once, tagged once and promoted, and the estate pins one
+ * `test/no-build-time-config.test.ts` forbids every form of build-time environment anywhere in
+ * `src/` — the bundler's own env object, the prefixed variables it inlines, and Node's `process`
+ * env — and it is not alone: the `rules` job in `.github/workflows/ci.yml` greps for the same three
+ * WITHOUT stripping comments, so naming them here in prose fails the build. (Deliberate on their
+ * part, and left that way rather than loosened: a rule that tolerates its own name in a comment is
+ * a rule somebody disables with a comment.) The reason for all of it is that the image is built
+ * once, tagged once and promoted, and the estate pins one
  * image per deployable by digest. So the answer arrives at RUNTIME, as a document this container's
  * own nginx composes from `POOL_API_PRESENCE` in its environment. One image, one digest, and the
  * environment stays in the environment. See `nginx.conf` under "IS THERE A POOL API ON THIS
