@@ -31,6 +31,8 @@ import {
   POOL_API_DEV_PORT,
   PRODUCT,
   resolveApiBase,
+  unlabelledPoolUrl,
+  unlabelledSurfaceUrl,
 } from '../src/lib/hosts.ts'
 import { read, readSibling, stripComments } from './sources.ts'
 
@@ -143,6 +145,63 @@ test('THE REGISTRY PLACES THIS SURFACE AT ITS OWN HOSTNAME, IN BOTH ENVIRONMENT 
 
   // A local checkout is always placed — the registry resolves every surface to a localhost port.
   assert.equal(atPage('http://localhost:5173/', placementIsKnown), true)
+})
+
+test('THE ONE ADDRESS THIS CONSOLE MAY POINT AWAY FROM ITSELF IS COMPOSED, NEVER WRITTEN DOWN', () => {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // micro-org#406. A reader on a network with no pool needs to be told where the pool IS, and
+  // `cloudsforgeHosts()` cannot say it: every address it answers is on the environment the page is
+  // being served from, which is precisely the environment that has no pool.
+  //
+  // So the address is composed — the apex off the page, the first label off the registry's own
+  // `envLabel(subdomain, '')`. This asserts the composition rather than restating its output as a
+  // constant, because a constant here is the literal build-time hostname
+  // `test/no-build-time-config.test.ts` forbids, and it would agree with a wrong derivation.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  assert.equal(
+    unlabelledSurfaceUrl('pool-testnet.cloudsforge.online'),
+    'https://pool.cloudsforge.online',
+  )
+  // Any environment, not just the one that prompted this. `staging` and `preview` are registry
+  // labels too, and a rule written around the string "testnet" would be a fourth copy of the list.
+  assert.equal(
+    unlabelledSurfaceUrl('pool-staging.cloudsforge.online'),
+    'https://pool.cloudsforge.online',
+  )
+  // The apex comes off the PAGE. An estate served from another domain gets its own pool, not this
+  // one — the whole point of composing rather than hard-coding.
+  assert.equal(unlabelledSurfaceUrl('pool-dev.example.test'), 'https://pool.example.test')
+  // Arriving on ANOTHER surface's labelled hostname still composes the POOL, because the subdomain
+  // comes from `surface(PRODUCT)` and not from the address. That is what makes this correct on the
+  // day some other console imports it.
+  assert.equal(
+    unlabelledSurfaceUrl('hub-testnet.cloudsforge.online'),
+    'https://pool.cloudsforge.online',
+  )
+
+  // ── AND EVERY CASE WHERE THE ANSWER IS NO LINK AT ALL ────────────────────────────────────────
+  //
+  // A "the pool is over here" link that 404s teaches the reader the pool is gone, which is worse
+  // than the sentence standing on its own. `src/pages/no-pool.tsx` renders no anchor for these.
+  for (const local of ['', 'localhost', '127.0.0.1', 'estate.local']) {
+    assert.equal(unlabelledSurfaceUrl(local), null, `${local || '(empty)'} composed an address`)
+  }
+  // Already on the unlabelled environment: the composed address would be this very page.
+  assert.equal(unlabelledSurfaceUrl('pool.cloudsforge.online'), null)
+  // A two-label hostname IS an apex — there is no first label to spend on an environment.
+  assert.equal(unlabelledSurfaceUrl('cloudsforge.online'), null)
+  // A first label the registry cannot split: a preview deployment, somebody's tunnel. The apex
+  // would be invented, and inventing one is how a dead link gets published.
+  assert.equal(unlabelledSurfaceUrl('some-preview.example.net'), null)
+
+  // The window-reading wrapper agrees with the pure function it wraps, which is the only part of
+  // this that `src/pages/no-pool.tsx` actually calls.
+  assert.equal(
+    atPage('https://pool-testnet.cloudsforge.online/', unlabelledPoolUrl),
+    'https://pool.cloudsforge.online',
+  )
+  assert.equal(atPage('https://pool.cloudsforge.online/', unlabelledPoolUrl), null)
+  assert.equal(atPage('http://localhost:4146/', unlabelledPoolUrl), null)
 })
 
 test('AN ADDRESS THE REGISTRY CANNOT PLACE SAYS SO INSTEAD OF GUESSING', () => {

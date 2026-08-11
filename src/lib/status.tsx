@@ -52,6 +52,19 @@ const PoolStatusContext = createContext<PoolStatusValue | null>(null)
 
 export function PoolStatusProvider({ children }: { children: ReactNode }) {
   const base = apiBase()
+  /*
+   * ── THE REQUEST BELOW IS NOT ALWAYS MADE, AND THAT IS DECIDED ELSEWHERE (micro-org#406) ──────
+   *
+   * On a deployment with no micro-pool behind it, `GET /v1/pool` is answered by Traefik with a 502
+   * — it has no backend to forward to, because the service is behind a compose profile the estate
+   * does not name. Measured on `pool-testnet.cloudsforge.online` on 2026-08-11.
+   *
+   * `useResource` declines to run this loader at all in that case, and holds it during the one
+   * round trip in which the answer is not yet known. The branch was HERE first and was wrong here:
+   * `/workers/:chain/:account` reads its parameters from the URL rather than from this provider,
+   * so it went on firing two doomed requests that no amount of care in this file could stop. The
+   * gate belongs in the hook every read goes through, and its header says so at length.
+   */
   const resource = useResource<PoolStatus>(
     (signal) => fetchPool(base, { signal }),
     // The count that decides `empty` is the number of CHAINS. A pool answering with an empty chain

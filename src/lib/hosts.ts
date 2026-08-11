@@ -29,7 +29,7 @@
  * ════════════════════════════════════════════════════════════════════════════════════════════════
  */
 import { cloudsforgeHosts, type CloudsForgeHosts, type SurfaceKey } from '@cloudsforge/ui'
-import { surface } from '@cloudsforge/ui/surfaces'
+import { envLabel, splitEnvLabel, surface } from '@cloudsforge/ui/surfaces'
 
 /**
  * The surface this application IS.
@@ -139,6 +139,56 @@ export function isRegisteredPlacement(
   } catch {
     return false
   }
+}
+
+/**
+ * THE SAME SURFACE ON THE UNADORNED ENVIRONMENT — the one address this console may point AWAY from
+ * itself, and the only place in this repository that composes a hostname other than its own.
+ *
+ * ════════════════════════════════════════════════════════════════════════════════════════════════
+ * `cloudsforgeHosts()` answers "where are my siblings", and every one of its answers is on the
+ * environment this page is being served from. It has no way to say "and where is this surface on
+ * the environment that has no label", which is exactly the sentence a reader on a network with no
+ * pool needs (`src/lib/deployment.tsx`, micro-org#406): the pool runs somewhere, and telling
+ * somebody it does not run HERE without telling them where it does run is half an answer.
+ *
+ * It is derived rather than written down, for the reason `test/no-build-time-config.test.ts` gives
+ * about literal hostnames: an image naming `pool.cloudsforge.online` is an image that only works on
+ * one estate, and it is the same build-time environment wearing a different hat. So the apex comes
+ * off the address of the page and the first label is recomposed with `envLabel(subdomain, '')` —
+ * the registry's own inverse of `splitEnvLabel()`, which is what guarantees this produces the name
+ * the registry would have produced rather than a second opinion about how the estate is named.
+ *
+ * ── NULL IS THE ANSWER MORE OFTEN THAN A CALLER EXPECTS, AND EVERY CASE IS DELIBERATE ─────────
+ *
+ *   * ON LOCALHOST, and on any address whose first label the registry cannot split. That is a
+ *     preview deployment, somebody's tunnel, a two-label hostname. `cloudsforgeHosts()` refuses to
+ *     guess an apex from those and so does this: a composed `https://pool.<whatever-this-is>` is a
+ *     hostname that resolves to nothing, and a "the pool is over here" link that 404s is worse than
+ *     no link, because the reader concludes the pool is gone rather than that the page is confused.
+ *   * ON THE UNADORNED ENVIRONMENT ITSELF. `pool.<apex>` has no environment label to strip, so the
+ *     composed address would be this very page — a link a reader would click to arrive back where
+ *     they already are. A caller that has been told there is no pool HERE while it is being served
+ *     from the unlabelled name is in a state this function must not paper over: it is either an
+ *     estate whose pool profile is genuinely off, which is what mainnet looked like before
+ *     2026-08-09, or a misconfiguration. Either way the honest rendering is the explanation without
+ *     a link, and `src/components/notices.tsx` renders exactly that.
+ * ════════════════════════════════════════════════════════════════════════════════════════════════
+ */
+export function unlabelledSurfaceUrl(hostname: string): string | null {
+  if (isLocal(hostname)) return null
+  const parts = hostname.split('.')
+  // `parts.length > 2` for the same reason `cloudsforgeHosts()` requires it: a two-label hostname
+  // IS an apex and has no first label to spend on a subdomain or an environment.
+  if (parts.length <= 2) return null
+  if (splitEnvLabel(parts[0] ?? '') === null) return null
+  const apex = parts.slice(1).join('.')
+  return `https://${envLabel(surface(PRODUCT).subdomain, '')}.${apex}`
+}
+
+/** This surface on the unadorned environment, resolved now, or null. See above for every null. */
+export function unlabelledPoolUrl(): string | null {
+  return unlabelledSurfaceUrl(typeof window === 'undefined' ? '' : window.location.hostname)
 }
 
 /** Every CloudsForge base URL, for the current environment. */

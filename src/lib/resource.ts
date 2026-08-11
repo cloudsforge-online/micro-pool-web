@@ -20,7 +20,8 @@
  * something to DO rather than as an absence to be sorry about.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { noticeFor, type ErrorNotice } from './api.ts'
+import { ApiError, noticeFor, type ErrorNotice } from './api.ts'
+import { NO_POOL_HERE, usePoolApi } from './deployment.tsx'
 
 export type ResourceState = 'loading' | 'ok' | 'empty' | 'failed'
 
@@ -77,6 +78,41 @@ export interface Resource<T> {
  * `deps` re-runs the load when the thing being loaded changes — navigating from one miner's page to
  * another is a route parameter change and not a remount, so without it the second address would
  * render the first one's shares.
+ *
+ * ════════════════════════════════════════════════════════════════════════════════════════════════
+ * IT DOES NOT RUN `load` AT ALL ON A DEPLOYMENT WITH NO POOL BEHIND IT — micro-org#406.
+ *
+ * MEASURED 2026-08-11: `pool-testnet.cloudsforge.online` serves this bundle with a 200 and answers
+ * every `/v1/…` under it with a Traefik 502, because micro-pool is behind a compose profile a
+ * testnet estate does not name. `src/lib/deployment.tsx` is how this bundle learns that, and this
+ * is where knowing it stops requests being made.
+ *
+ * ── WHY THE GATE IS HERE, IN THE GENERIC HOOK, AND NOT IN EACH CALLER ─────────────────────────
+ *
+ * Because a caller can forget, and one that forgot was found by a red test rather than by reading.
+ * The first version of this fix put the branch in `PoolStatusProvider` alone, on the reasoning that
+ * every page reads its `chains` and a page with no chains asks for nothing. That is true of the
+ * landing page and of `/blocks` — and false of `/workers/:chain/:account`, which takes its chain
+ * and its account from the URL and therefore fired `GET /v1/pool/workers` and `GET /v1/pool/shares`
+ * with no chain list at all. A deep link into a miner's record — the address that gets bookmarked
+ * and pasted into support conversations — still put two 502s in the reader's console.
+ *
+ * Every read on this surface is a read of micro-pool: there is exactly one upstream, its presence
+ * is a property of the deployment rather than of the caller, and every one of those reads comes
+ * through this hook. So the question "is there anything at the other end" is answered once, here,
+ * and a page written next year cannot be the one that forgets.
+ *
+ * ── AND WHY `unknown` WAITS RATHER THAN FETCHING OPTIMISTICALLY ───────────────────────────────
+ *
+ * `unknown` lasts exactly one same-origin round trip against this container's own nginx — shorter
+ * than any request this would have started, and it delays no static content, because it holds up
+ * the DATA and not the render. The optimistic alternative fires the doomed request and then cannot
+ * cancel it before the answer arrives, which is the whole of what this is here to prevent.
+ *
+ * The opposite default — treating `unknown` as `absent` — is the one that must never be taken: it
+ * would put "this network does not run a mining pool" on the pool's own console, on mainnet, on
+ * every load, for the length of that round trip.
+ * ════════════════════════════════════════════════════════════════════════════════════════════════
  */
 export function useResource<T>(
   load: (signal: AbortSignal) => Promise<T>,
@@ -88,12 +124,32 @@ export function useResource<T>(
   const [error, setError] = useState<ErrorNotice | null>(null)
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
+  const deployment = usePoolApi()
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
     setError(null)
     setData(null)
+
+    // Not yet told. Stay in `loading`, which is what every page on this site already renders
+    // correctly, and re-run when the answer lands — `deployment` is in the dependency list below.
+    if (deployment === 'unknown') return () => controller.abort()
+
+    if (deployment === 'absent') {
+      // `status: 0` is the code this bundle already reserves for "the request never produced a
+      // response at all" (`src/lib/api.ts`), which is precisely what happened: no request was made.
+      // It carries no request id, because no request exists to quote to anybody.
+      //
+      // Almost nothing renders this. `src/app.tsx` substitutes the whole page for an explanation
+      // whenever the deployment says `absent`, so this reaches a screen only from a future page
+      // that reads a resource outside that substitution — where the reader gets the true sentence
+      // instead of "The pool did not answer", which is the sentence micro-org#406 was about.
+      setError(noticeFor(new ApiError(0, NO_POOL_HERE), fallbackMessage))
+      setLoading(false)
+      return () => controller.abort()
+    }
+
     load(controller.signal)
       .then((value) => {
         if (controller.signal.aborted) return
@@ -109,8 +165,10 @@ export function useResource<T>(
       })
     return () => controller.abort()
     // `load` is recreated every render by most callers, so it is deliberately not a dependency.
+    // `deployment` IS one: the whole point of the gate above is that the load runs the moment — and
+    // only the moment — this container has said there is something at the other end.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nonce, ...deps])
+  }, [nonce, deployment, ...deps])
 
   const reload = useCallback(() => setNonce((n) => n + 1), [])
 

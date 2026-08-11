@@ -31,6 +31,13 @@ import {
 /** Every route stubbed with the default fixtures, so a scenario only overrides what it is about. */
 function allRoutes(over: Routes = {}): Routes {
   return {
+    // NOT part of micro-pool's API: this is the container's own answer to "is there a pool behind
+    // me at all" (`src/lib/deployment.tsx`, micro-org#406), served by this bundle's nginx beside
+    // the bundle. It is stubbed in the DEFAULT table rather than per scenario because every mount
+    // reads it before it reads anything else, and an unstubbed request is a harness error by
+    // design — see `test/dom.ts`. `present` is what a deployment WITH a pool serves, so every
+    // scenario below is a scenario about the console this repository has always shipped.
+    'GET /deployment.json': { body: { poolApi: 'present' } },
     'GET /v1/pool': { body: poolStatus() },
     'GET /v1/pool/blocks': { body: poolBlocks() },
     'GET /v1/pool/workers': { body: poolWorkers() },
