@@ -8,10 +8,13 @@
  * site would contradict itself on a single screen:
  *
  *   1. WHICH CHAINS EXIST. `POOL_CHAINS` is a per-deployment environment variable
- *      (`pool/src/env.ts`) and today's estate can only deploy `ltc`, because bitcoind is still doing
- *      its initial block download. Every chain selector, every table heading and every stratum port
- *      on this site is drawn from `status.chains`, and NOTHING in this bundle holds a list of its
- *      own. A pool serving one chain must not render a two-chain layout with a hole in it.
+ *      (`pool/src/env.ts`) and it changed under this bundle without a line of it being edited: the
+ *      estate served `ltc` alone until 2026-08-10, because bitcoind was still in its initial block
+ *      download, and has served `ltc,btc` since 2026-08-11. Every chain selector, every table
+ *      heading and every stratum port on this site is drawn from `status.chains`, and NOTHING in
+ *      this bundle holds a list of its own — which is exactly why that change cost nothing here. A
+ *      pool serving one chain must not render a two-chain layout with a hole in it, and a pool
+ *      serving two must not be shown as one.
  *   2. WHETHER PAYOUTS EXIST. `payoutsImplemented` is the field the whole site turns on. It is read
  *      here, once, and everything that says so downstream branches on this value rather than on a
  *      constant — so the day micro-pool implements settlement is the day this site stops saying it

@@ -65,8 +65,10 @@ export const BTC = {
   height: null,
   networkDifficulty: null,
   templateAgeSeconds: null,
-  // False on purpose: bitcoind is still doing its initial block download, which is the real reason
-  // this chain is not deployable today, and `ready: false` is exactly how that presents.
+  // False on purpose, and no longer because of bitcoind: the estate has served real BTC work since
+  // 2026-08-11. `ready: false` is what a chain whose node cannot answer looks like from here — no
+  // template, so no height, no difficulty and no age — and this fixture exists to hold the layout
+  // for that, whatever put the node out of reach.
   ready: false,
   windowSeconds: 600,
   sharesInWindow: 0,
