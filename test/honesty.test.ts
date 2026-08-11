@@ -37,6 +37,10 @@ const app = () => createElement(App)
 /** Every route this site reads, with the fullest fixtures there are. */
 function loudRoutes(over: Routes = {}): Routes {
   return {
+    // This container's own description of itself, read once above the router before any `/v1` call
+    // is made (`src/lib/deployment.tsx`). `present` here, so every scenario in this file is about a
+    // deployment that HAS a pool; the deployment that has none has its own sweep at the foot.
+    'GET /deployment.json': { body: { poolApi: 'present' } },
     'GET /v1/pool': { body: poolStatus() },
     'GET /v1/pool/blocks': { body: poolBlocks() },
     'GET /v1/pool/workers': { body: poolWorkers() },
@@ -242,6 +246,42 @@ test('the absences list drops Payouts when payouts exist, and keeps the rest', a
       assert.ok(text.includes('PPLNS only'))
     },
   )
+})
+
+test('THE STATEMENT SURVIVES A DEPLOYMENT THAT HAS NO POOL BEHIND IT AT ALL', async () => {
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // micro-org#406, and the one case where suppressing the notice would have been tempting: a page
+  // that says "there is no pool here" carrying a warning about how the pool does not pay reads, for
+  // a second, like an answer to a question nobody asked.
+  //
+  // It stays, because of what that page's link does. `src/pages/no-pool.tsx` exists to send a
+  // reader to a pool that DOES exist, and the single most important thing to tell somebody before
+  // they follow that link is that hashrate pointed at the other end of it earns nothing. Dropping
+  // the notice here would remove it from the one page whose reader is about to act on it.
+  //
+  // `/v1/pool` is stubbed and answers `payoutsImplemented: false`, so this cannot pass by accident:
+  // the sentence has to come from a request that was never made.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  const nowhere = loudRoutes({ 'GET /deployment.json': { body: { poolApi: 'absent' } } })
+
+  for (const url of ADDRESSES) {
+    // The measured address, so the page under test is the one that really rendered three error
+    // states on 2026-08-11 — first label suffixed, apex untouched.
+    const measured = url.replace('//pool.', '//pool-testnet.')
+    await withScreen(app(), { url: measured, routes: nowhere }, async (screen) => {
+      assert.ok(
+        screen.text().includes(NOT_PAID_HEADLINE),
+        `${url} on a deployment with no pool stopped saying it does not pay out`,
+      )
+      assertMakesNoClaim(screen, `${url} on a deployment with no pool`)
+      assert.deepEqual(
+        screen.api.matching('GET /v1/pool'),
+        [],
+        `${url} called an API it had already been told is not there — the 502 this page exists ` +
+          `to explain would have been in the reader's console`,
+      )
+    })
+  }
 })
 
 test('nothing on this site promises a date', async () => {

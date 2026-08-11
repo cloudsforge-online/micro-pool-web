@@ -481,9 +481,98 @@ jobs:
 
           docker rm -f ci-pool-web >/dev/null 2>&1 || true
           exit $fail
+
+      # ────────────────────────────────────────────────────────────────────────────────────────
+      # THE ONE PIECE OF PER-DEPLOYMENT CONFIGURATION THIS IMAGE HAS — micro-org#406.
+      #
+      # PROBED, NOT READ, and for the reason the step above gives: everything about this mechanism
+      # is invisible in the config and obvious in a response. The template only becomes a document
+      # if nginx's own entrypoint expands it (`/docker-entrypoint.d/20-envsubst-on-templates.sh`),
+      # which it does only when the command is `nginx`, only for `/etc/nginx/templates/*.template`,
+      # and only if it can write to `/etc/nginx/conf.d` as uid 101. Reading the Dockerfile suggests
+      # all three. Curling the container is the only thing that establishes them.
+      #
+      # Both directions are asserted, because each has a distinct and expensive failure:
+      #
+      #   - UNSET MUST NOT MEAN ABSENT, AND MUST NOT MEAN DOWN. Every existing deployment of this
+      #     image, mainnet included, has never heard of `POOL_API_PRESENCE`. Measured 2026-08-11:
+      #     the first version of this mechanism EXITED 1 on such a deployment with
+      #     `nginx: [emerg] unknown "pool_api_presence" variable`, because the entrypoint only
+      #     substitutes variables that are set and left the placeholder in the config verbatim. The
+      #     Dockerfile's `ENV POOL_API_PRESENCE=present` is the fix, and this step is what would
+      #     have caught it — the config reads correctly either way, and the container does not.
+      #   - SET MUST REACH THE BUNDLE. A flag that expands to nothing is a configuration mechanism
+      #     that configures nothing, and the console would go on rendering three error states on
+      #     testnet exactly as it did on 2026-08-11 — with a green build.
+      # ────────────────────────────────────────────────────────────────────────────────────────
+      - name: The deployment document is served, and the environment is what decides it
+        run: |
+          set -uo pipefail
+          fail=0
+
+          probe() { # container-name, docker-run-args…
+            name=$1; shift
+            docker rm -f "$name" >/dev/null 2>&1 || true
+            docker run -d --name "$name" -p 127.0.0.1:8081:8080 "$@" pool-web:ci >/dev/null
+            for _ in $(seq 1 30); do
+              code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/ || true)
+              [ "$code" = "200" ] && break
+              sleep 1
+            done
+            [ "${code:-}" = "200" ] || { echo "::error::$name did not start"; docker logs --tail 60 "$name"; fail=1; }
+          }
+
+          # ── a deployment that says nothing, i.e. every one that exists today ──────────────────
+          probe ci-pool-web-default
+          got=$(curl -s -m 5 http://127.0.0.1:8081/deployment.json || true)
+          echo "  default: $got"
+          case "$got" in
+            *'"poolApi"'*) ;;
+            *) echo "::error::/deployment.json did not serve the document (got '${got:-nothing}'); the template was never expanded"; fail=1 ;;
+          esac
+          case "$got" in
+            *'"absent"'*) echo "::error::an unconfigured image reports that there is no pool behind it"; fail=1 ;;
+          esac
+          # The security headers are per-location in nginx and `add_header` is all-or-nothing at
+          # each level, so a new location loses every inherited one silently. This one sets its own;
+          # this is the check that it really did.
+          for header in X-Content-Type-Options X-Frame-Options Referrer-Policy; do
+            curl -sI -m 5 http://127.0.0.1:8081/deployment.json | tr -d '\r' | grep -qi "^$header:" || {
+              echo "::error::/deployment.json is missing $header"; fail=1; }
+          done
+          # JSON, not the `types { }` default and not the SPA shell.
+          ctype=$(curl -sI -m 5 http://127.0.0.1:8081/deployment.json | tr -d '\r' | grep -i '^content-type:' || true)
+          case "$ctype" in
+            *application/json*) ;;
+            *) echo "::error::/deployment.json is served as '${ctype:-nothing}'"; fail=1 ;;
+          esac
+          docker rm -f ci-pool-web-default >/dev/null 2>&1 || true
+
+          # ── a deployment on a network with no pool, which is what compose will set ────────────
+          probe ci-pool-web-absent -e POOL_API_PRESENCE=absent
+          got=$(curl -s -m 5 http://127.0.0.1:8081/deployment.json || true)
+          echo "  absent:  $got"
+          case "$got" in
+            *'"poolApi":"absent"'*) ;;
+            *) echo "::error::POOL_API_PRESENCE=absent did not reach the document (got '${got:-nothing}')"; fail=1 ;;
+          esac
+          docker rm -f ci-pool-web-absent >/dev/null 2>&1 || true
+
+          # ── and the flag changes nothing else about the container ────────────────────────────
+          probe ci-pool-web-still -e POOL_API_PRESENCE=absent
+          for owned in / /workers /blocks; do
+            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081$owned" || true)
+            [ "$code" = "200" ] || { echo "::error::$owned returned $code with the flag set"; fail=1; }
+          done
+          code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/payouts || true)
+          [ "$code" = "404" ] || { echo "::error::/payouts returned $code with the flag set"; fail=1; }
+          docker rm -f ci-pool-web-still >/dev/null 2>&1 || true
+
+          exit $fail
+
       - name: Down
         if: always()
-        run: docker rm -f ci-pool-web || true
+        run: docker rm -f ci-pool-web ci-pool-web-default ci-pool-web-absent ci-pool-web-still || true
 
   hygiene:
     # The org's reusable secret check. Cheap, and it catches the failure that cannot be undone: a

@@ -272,10 +272,49 @@ the Dogecoin half of every share would be worth nothing.
 
 ## Configuration
 
-**There is none.** No environment variables, no `.env`, no `define`, no `envPrefix`, no
+**None of it is built into the bundle.** No `.env`, no `define`, no `envPrefix`, no
 `import.meta.env` and no `VITE_` anything. A build-time constant is an environment baked into an
 image, and an image with an environment baked into it has to be rebuilt to be promoted — so the
 artefact that reaches production is not the artefact that passed CI.
+
+### `POOL_API_PRESENCE` — the one variable, read by nginx and never by the bundle
+
+Default `present`; the only other value that means anything is `absent`.
+
+It answers a question that comes before `GET /v1/pool`: **is there a micro-pool behind this console
+at all.** On a testnet estate there is not. micro-pool sits behind `profiles: ["pool"]` in the
+estate's compose file and a testnet deployment does not name that profile — deliberately, because
+micro-pool validates `POOL_NETWORK` against `getblockchaininfo` and would refuse to boot against a
+testnet node anyway. The console is *not* behind the same profile, on purpose, so that the page
+explaining the hole is reachable when the service is not.
+
+It could not explain anything until it was told. Measured 2026-08-11: `pool-testnet.<apex>` served
+this bundle with a 200 and every `/v1/…` under it answered **502**, so `/`, `/workers` and
+`/blocks` each rendered *"The pool did not answer"* with a **Try again** button that could never
+succeed — three pages of an incident that was not happening (micro-org#406).
+
+```
+POOL_API_PRESENCE=absent   →   GET /deployment.json  →  {"poolApi":"absent"}
+```
+
+* **nginx serves it, the bundle reads it.** `deployment.inc.template` is expanded by the stock
+  entrypoint into `/etc/nginx/conf.d/deployment.inc` when the *container* starts, and
+  `location = /deployment.json` includes it. The image is still built once and promoted by digest;
+  the fact arrives the way every other deploy fact does. `src/lib/deployment.tsx` reads it.
+* **`absent` has to be said explicitly.** An unreadable document, a 404 from an older image, an
+  empty value and a request that never landed all resolve to `present`. The expensive error is the
+  other one: telling a miner whose hardware is connected to a working pool that it does not exist.
+* **It is not derived from the hostname.** A hostname says which environment this is, not whether
+  that environment runs a pool — and the two have already diverged once, when mainnet ran this
+  console for weeks before the profile was switched on.
+* **`ENV POOL_API_PRESENCE=present` in the `Dockerfile` is load-bearing.** The nginx entrypoint
+  substitutes only variables that are *set*, so an unset one is left in the config verbatim and
+  nginx exits with `unknown "pool_api_presence" variable`. Measured, on the first build of it.
+
+What a reader gets on a deployment that says `absent`: `src/pages/no-pool.tsx` in place of every
+console page, with a link to the pool that does exist (composed from the page address, never
+written down) and one to browser mining on Forge Hub. And `src/lib/resource.ts` declines to run any
+load at all, so the console issues **no `/v1` request** rather than one per page.
 
 Every host is resolved at runtime from `window.location.hostname` (`src/lib/hosts.ts`), and the API
 base is the **empty string**: the gateway serves this bundle and micro-pool's `/v1` on one origin,

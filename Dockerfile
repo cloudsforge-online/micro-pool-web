@@ -70,6 +70,47 @@ RUN sed -i "s|name=\"cf-release\" content=\"dev\"|name=\"cf-release\" content=\"
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# THE ONE FILE IN THIS IMAGE THAT IS NOT THE SAME ON EVERY DEPLOYMENT — AND IT STILL IS NOT
+# BUILT-TIME CONFIGURATION.
+#
+# The image is built once and promoted; nothing above reads an environment. This template is
+# expanded by the stock entrypoint (`/docker-entrypoint.d/20-envsubst-on-templates.sh`) into
+# `/etc/nginx/conf.d/deployment.inc` when the CONTAINER starts, from `POOL_API_PRESENCE` in its
+# environment, and `nginx.conf` includes it inside `location = /deployment.json`. So the artefact
+# CI examined is byte-for-byte the artefact that runs, and the one fact that differs between a
+# mainnet estate and a testnet one — whether there is a micro-pool behind this console at all
+# (micro-org#406) — arrives the way every other deploy fact does.
+#
+# `.inc` and not `.conf` on purpose: the output directory is `conf.d`, which the packaged
+# nginx.conf includes as `*.conf`, so a `.conf` here would become a second `server` block on 8080.
+# The argument in full, including why nginx.conf itself is copied verbatim rather than templated,
+# is in nginx.conf under "IS THERE A POOL API ON THIS DEPLOYMENT AT ALL?".
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+COPY deployment.inc.template /etc/nginx/templates/deployment.inc.template
+
+# ── AND THE DEFAULT, WHICH IS NOT OPTIONAL AND WAS FOUND BY RUNNING THE IMAGE ────────────────────
+#
+# MEASURED 2026-08-11, building this image and starting it with no environment: the container
+# EXITED 1 with `nginx: [emerg] unknown "pool_api_presence" variable`.
+#
+# The entrypoint does not substitute every `${...}` it finds. It builds its list from the variables
+# that are actually SET — `envsubst "$defined_envs"` over `printenv | cut -d= -f1` — so an unset
+# variable is left in the output verbatim, `${POOL_API_PRESENCE}` reaches nginx as an nginx variable
+# reference, nginx has never heard of it, and the config fails to parse. Not a wrong document: no
+# server at all. Every deployment that had never heard of this flag — mainnet included — would have
+# gone down on the deploy that shipped it, and nothing about the Dockerfile or the template says so.
+#
+# `ENV` rather than a default inside the template, because there is no `${VAR:-default}` in
+# envsubst: it implements only `$VAR` and `${VAR}`. This is the one place the default can live.
+#
+# `present` and not the empty string. Both read as "there is a pool here" (`src/lib/deployment.tsx`
+# treats only the exact string `absent` as absence, and everything else — including `""` — as
+# presence), but a document that says `{"poolApi":"present"}` states the assumption an operator is
+# looking at, where an empty field looks like the mechanism is broken.
+ENV POOL_API_PRESENCE=present
+
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 8080

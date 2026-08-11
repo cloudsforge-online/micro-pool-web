@@ -1,0 +1,190 @@
+/**
+ * WHETHER THIS DEPLOYMENT HAS A MINING POOL BEHIND IT AT ALL.
+ *
+ * ════════════════════════════════════════════════════════════════════════════════════════════════
+ * This is the only thing this bundle learns from its container rather than from `window.location`
+ * or from the API, and it took a measured defect to justify the exception. micro-org#406,
+ * 2026-08-11: `pool-testnet.cloudsforge.online/` answered 200 and every `/v1/…` under it answered
+ * 502, so `/`, `/workers` and `/blocks` all rendered "The pool did not answer" with a Try again
+ * button that could never succeed.
+ *
+ * Nothing was broken. micro-pool is behind `profiles: ["pool"]` in
+ * `deploy/compose/docker-compose.estate.yml`; `compose/mainnet.env` names that profile and
+ * `compose/testnet.env` does not, so on a testnet estate the API container is never created and
+ * Traefik has no backend to forward `/v1` to. That is deliberate and permanent — micro-pool
+ * validates `POOL_NETWORK` against what the node reports and requires a node URL and a payout
+ * address per chain, so a pool started on a testnet estate refuses to boot. This console is
+ * deliberately NOT behind the same profile, because `deploy/gateway/dynamic/estate-web.yml`
+ * expects it to be "the page that explains the hole". It could not explain anything: a 502 is
+ * indistinguishable from an outage to a client that has never been told the difference.
+ *
+ * ── WHY THIS IS NOT DERIVED FROM THE HOSTNAME, WHICH IS THIS FILE'S WHOLE POINT ───────────────
+ *
+ * Everything else in this bundle resolves from `window.location.hostname` (`src/lib/hosts.ts`), and
+ * the tempting move is to do it here too: this hostname carries an environment label, `testnet` has
+ * no pool, done. It is wrong, and it is wrong in the direction that costs the most.
+ *
+ * "Which network is this" and "does this network run a mining pool" are two different questions.
+ * The second is a property of one `COMPOSE_PROFILES` line in one env file, and it can change on
+ * either network without a hostname changing: a staging estate could run a pool, and mainnet's own
+ * pool was behind that same profile until 2026-08-09, when its payout address and its fee were
+ * decided. A rule that read the environment label would have declared mainnet poolless for as long
+ * as that was true and then lied about it the moment it stopped being true — a page telling miners
+ * there is no pool while there is one is the more expensive of the two errors by a distance.
+ *
+ * ── WHY IT IS NOT A BUILD ARG EITHER ──────────────────────────────────────────────────────────
+ *
+ * `test/no-build-time-config.test.ts` forbids every form of build-time environment anywhere in
+ * `src/` — the bundler's own env object, the prefixed variables it inlines, and Node's `process`
+ * env — and it is not alone: the `rules` job in `.github/workflows/ci.yml` greps for the same three
+ * WITHOUT stripping comments, so naming them here in prose fails the build. (Deliberate on their
+ * part, and left that way rather than loosened: a rule that tolerates its own name in a comment is
+ * a rule somebody disables with a comment.) The reason for all of it is that the image is built
+ * once, tagged once and promoted, and the estate pins one
+ * image per deployable by digest. So the answer arrives at RUNTIME, as a document this container's
+ * own nginx composes from `POOL_API_PRESENCE` in its environment. One image, one digest, and the
+ * environment stays in the environment. See `nginx.conf` under "IS THERE A POOL API ON THIS
+ * DEPLOYMENT AT ALL?" for the mechanism and its three traps.
+ *
+ * ── ABSENT IS SAID EXPLICITLY OR NOT AT ALL ───────────────────────────────────────────────────
+ *
+ * `PRESENT` is the answer to every ambiguity: a 404, a body that is not JSON, a field that is
+ * missing, a value that is anything other than the exact string `absent`, a request that never
+ * landed. The asymmetry runs the opposite way to `payoutsImplemented` in `src/lib/status.tsx`, and
+ * for the same underlying reason — each defaults to the answer whose failure mode is survivable.
+ * There, silence must not become a promise of payment. Here, silence must not become a page
+ * telling a miner with hardware pointed at a working pool that the pool does not exist. An
+ * operator who deletes an environment variable gets today's console back, which is a console that
+ * works.
+ * ════════════════════════════════════════════════════════════════════════════════════════════════
+ */
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { pageOrigin } from './hosts.ts'
+
+/**
+ * Where the answer lives.
+ *
+ * Same origin and a fixed path, so no hostname is composed and no CORS grant is needed. It is NOT
+ * under `/v1`: the gateway routes that prefix to micro-pool, which is the service this document
+ * exists to report the absence of, so a `/v1` address would be answered by the 502 it is meant to
+ * explain. `nginx.conf` serves it from this container, beside the bundle.
+ */
+export const DEPLOYMENT_PATH = '/deployment.json'
+
+/**
+ * How long the console waits for its own container to answer a static string.
+ *
+ * Two seconds rather than `REQUEST_TIMEOUT_MS`'s eight. This is not a read against a service across
+ * an estate; it is nginx answering a `return 200` from the same origin that just served the
+ * document. Eight seconds of blank page while waiting for it would be eight seconds spent on the
+ * pathological case, and the pathological case resolves to `present` anyway — so the cost of the
+ * timeout being short is nil and the cost of it being long is paid by every reader.
+ */
+export const DEPLOYMENT_TIMEOUT_MS = 2000
+
+/**
+ * `unknown` is a real state and pages must render it as such.
+ *
+ * It lasts one same-origin round trip. What it must not do is default to `absent` for that round
+ * trip — a console that flashed "this network does not run a mining pool" before its own numbers
+ * arrived would be showing every reader, on every load, on every estate, the one sentence that is
+ * only true on some of them.
+ */
+export type PoolApiPresence = 'unknown' | 'present' | 'absent'
+
+/**
+ * What a resource says when there was no service to ask.
+ *
+ * Lives here rather than in `src/lib/status.tsx` because `src/lib/resource.ts` is what renders it —
+ * the gate that declines to fetch is in the hook every page's data goes through — and a constant in
+ * `status.tsx` would make the generic hook depend on the one provider it is used by.
+ *
+ * It is a statement about the deployment, not about a request. Nothing routinely reaches a screen
+ * with it: `src/app.tsx` substitutes an explanation for any page that would show it.
+ */
+export const NO_POOL_HERE = 'This network does not run a mining pool.'
+
+/**
+ * Read the document's claim, refusing to be clever about it.
+ *
+ * Anything that is not the exact string `absent` in the `poolApi` field is `present`, including the
+ * empty string — which is what an unset `POOL_API_PRESENCE` renders as, and therefore what every
+ * host that has never heard of this flag serves.
+ */
+export function readPresence(body: unknown): 'present' | 'absent' {
+  if (body === null || typeof body !== 'object') return 'present'
+  return (body as Record<string, unknown>)['poolApi'] === 'absent' ? 'absent' : 'present'
+}
+
+/**
+ * Ask this container what it is.
+ *
+ * Never rejects and never throws. Every failure — a 404 from an older image that has no such
+ * location, an nginx that answered HTML, an abort, a timeout — is `present`, which is the state
+ * this console has always been in and knows how to render.
+ */
+export async function fetchPresence(signal?: AbortSignal): Promise<'present' | 'absent'> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), DEPLOYMENT_TIMEOUT_MS)
+  const onCallerAbort = () => controller.abort()
+  signal?.addEventListener('abort', onCallerAbort, { once: true })
+  try {
+    const res = await fetch(new URL(DEPLOYMENT_PATH, pageOrigin()), {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      // No cookies, for the reason `src/lib/api.ts` gives: nothing on this surface reads a session,
+      // and sending one would make a static read into a CSRF surface for nothing in return.
+      credentials: 'omit',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+    if (!res.ok) return 'present'
+    return readPresence(await res.json())
+  } catch {
+    // Deliberately swallowed and deliberately not reported to observability. There is no failure
+    // here that a reader or an operator can act on: the fallback IS the working console, and an
+    // image built before this document existed would otherwise report an error on every page load
+    // on every estate for as long as it took somebody to notice.
+    return 'present'
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onCallerAbort)
+  }
+}
+
+const PoolApiContext = createContext<PoolApiPresence>('unknown')
+
+/**
+ * Fetched once for the whole app, above the router.
+ *
+ * A provider rather than a call per page, for the reason `src/lib/status.tsx` gives about
+ * `GET /v1/pool`: three pages reading one deploy fact separately is three requests for one answer
+ * and three chances to disagree about it on one screen. It is also what lets `PoolStatusProvider`
+ * below it decline to make a request that is known to fail.
+ */
+export function DeploymentProvider({ children }: { children: ReactNode }) {
+  const [presence, setPresence] = useState<PoolApiPresence>('unknown')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetchPresence(controller.signal).then((answer) => {
+      if (!controller.signal.aborted) setPresence(answer)
+    })
+    return () => controller.abort()
+  }, [])
+
+  return <PoolApiContext.Provider value={presence}>{children}</PoolApiContext.Provider>
+}
+
+/**
+ * Whether there is a pool behind this console.
+ *
+ * Returns `unknown` outside the provider rather than throwing, which is the opposite of
+ * `usePoolStatus()`. The difference is what a wrong answer costs: a default `payoutsImplemented`
+ * would be a second source of truth for the claim this whole repository exists to make, whereas a
+ * default `unknown` here renders a loading state and then nothing at all — it cannot make this
+ * console say something untrue, only make it slower to say the truth.
+ */
+export function usePoolApi(): PoolApiPresence {
+  return useContext(PoolApiContext)
+}
