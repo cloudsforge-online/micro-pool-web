@@ -110,7 +110,7 @@ export interface MergedChainStatus {
  * `chain` is `'btc' | 'ltc'` in the service's own types (`pool/src/chains.ts`), and it is typed as
  * a bare `string` here ON PURPOSE. This bundle must render whatever the API reports and must never
  * hold its own list of chains: which chains exist is a per-deployment fact set by `POOL_CHAINS`,
- * today's estate can only deploy `ltc` because bitcoind is still doing its initial sync, and a
+ * the estate went from `ltc` alone to `ltc,btc` on 2026-08-11 when bitcoind reached the tip, and a
  * union in a frontend would turn the arrival of a third chain into a type error in a repository
  * that has no business having an opinion. Everything on screen is keyed off this array's length
  * and contents.

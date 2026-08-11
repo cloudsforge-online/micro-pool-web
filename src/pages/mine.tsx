@@ -119,11 +119,14 @@ export function MinePage() {
           THE CHAIN SELECTOR EXISTS ONLY WHEN THERE IS A CHOICE.
 
           Which chains this deployment serves is `POOL_CHAINS`, a per-deployment environment
-          variable, and on 2026-08-09 the estate can only serve `ltc` because bitcoind is still doing
-          its initial block download. A hard-coded pair of tabs would render an empty BTC panel for
-          about a month and then be wrong again the day a third chain arrives. So the set is whatever
-          the API reported and a one-chain pool gets no selector at all — micro-pool makes the same
-          choice on its own side, defaulting `chain` when exactly one is configured.
+          variable. It was `ltc` alone on 2026-08-09, because bitcoind was mid initial block
+          download, and it has been `ltc,btc` since 2026-08-11 — so this selector appeared on a
+          public console without a line of this file changing, which is the whole argument for
+          reading it rather than writing it down. A hard-coded pair of tabs would have rendered an
+          empty BTC panel for two days and then been wrong again the day a third chain arrives. So
+          the set is whatever the API reported and a one-chain pool gets no selector at all —
+          micro-pool makes the same choice on its own side, defaulting `chain` when exactly one is
+          configured.
         */}
         {chains.length > 1 && (
           <p className="pl-chainpick">
