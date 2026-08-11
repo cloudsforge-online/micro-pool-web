@@ -67,7 +67,7 @@ credential, and this bundle sends none.
 
 | Path | Query | Reads |
 | --- | --- | --- |
-| `/v1/pool` | — | `network`, `feeBasisPoints`, `pplnsWindowMultiplier`, `payoutsImplemented`, and per chain: `chain`, `name`, `asset`, `decimals`, `algorithm`, `stratumPort`, `connections`, `height`, `networkDifficulty`, `templateAgeSeconds`, `ready`, `windowSeconds`, `sharesInWindow`, `workersInWindow`, `hashrateEstimate` |
+| `/v1/pool` | — | `network`, `feeBasisPoints`, `pplnsWindowMultiplier`, `payoutsImplemented`, and per chain: `chain`, `name`, `asset`, `decimals`, `algorithm`, `stratumPort`, `stratumEndpoint`, `websocketEndpoint`, `browserMining`, `connections`, `height`, `networkDifficulty`, `templateAgeSeconds`, `ready`, `windowSeconds`, `sharesInWindow`, `workersInWindow`, `hashrateEstimate`, `merged` |
 | `/v1/pool/blocks` | `chain`, `limit=25` | `chain`, `asset`, `decimals`, `payoutsImplemented`, and per block: `height`, `hash`, `foundAt`, `reward`, `networkDifficulty`, `submitStatus`, `submitDetail` |
 | `/v1/pool/workers` | `chain`, `account` | `chain`, `account`, `windowSeconds`, and per worker: `worker`, `lastSeenAt`, `difficulty`, `sharesInWindow`, `hashrateEstimate` |
 | `/v1/pool/shares` | `chain`, `account`, `limit=50` | `chain`, `account`, and per share: `id`, `worker`, `jobId`, `height`, `creditedDifficulty`, `achievedDifficulty`, `isBlock`, `createdAt` |
@@ -119,16 +119,56 @@ workers page behind an estate login would make a share history checkable by nobo
 
 ## The chain list is whatever the API reports
 
-`POOL_CHAINS` is per-deployment (`pool/src/env.ts`). Today only `ltc` is deployable — bitcoind is
-still syncing — and `doge` is refused by the service outright. So nothing in this bundle enumerates
-chains: the selector, the default, the stratum port and the algorithm all come from
-`/v1/pool`'s `chains` array. A single-chain deployment renders as a single chain with no selector and
-no empty second column, and a `btc` row appearing in the response is the only thing needed to make
-this site show BTC. `.github/workflows/ci.yml` greps for a hard-coded chain list.
+`POOL_CHAINS` is per-deployment (`pool/src/env.ts`), and this bundle enumerates no chains at all:
+the selector, the default, the algorithm and the connection details all come from `/v1/pool`'s
+`chains` array. A single-chain deployment renders as a single chain with **no selector** and no
+empty second column.
 
-The **stratum port** comes from the API for the same reason (`stratumPort`, defaulting to 3333 for
-BTC and 3334 for LTC in `pool/src/env.ts`). The **stratum hostname** does not, because the API does
-not report one — it is derived from the page's own address; see below.
+That is not a hypothetical benefit. This paragraph used to read "today only `ltc` is deployable —
+bitcoind is still syncing", and it stopped being true without a line of this repository changing:
+bitcoind reached the tip on 2026-08-10, `POOL_CHAINS` has named both chains since 2026-08-11, and
+the chain selector appeared on the public console by itself. Read from mainnet on 2026-08-11:
+
+| Chain | Algorithm | Height | `ready` | In a browser? |
+| --- | --- | --- | --- | --- |
+| `ltc` — Litecoin | scrypt | 3,158,124 | yes | yes, over a WebSocket |
+| `btc` — Bitcoin | sha256d | 962,013 | yes | **no** — refused by name, see below |
+
+A hard-coded pair of tabs would have rendered an empty BTC panel for two days and then been wrong
+again the day a third chain arrives. `.github/workflows/ci.yml` greps for a hard-coded chain list.
+
+### Bitcoin is refused to browsers, and that is a different fact from an absent endpoint
+
+Two fields answer two questions and collapsing them is the mistake to avoid:
+
+* `websocketEndpoint` — **the operator** has published no browser address for this chain. A
+  deployment setting, true today, possibly false next week.
+* `browserMining: { available: false, reason }` — **the pool** does not offer this chain to browsers
+  at all, as a matter of what the chain is, and no deployment setting changes it. BTC is the case,
+  and micro-pool publishes the argument rather than leaving this page to compose one: its network
+  runs at about 793 EH/s of purpose-built SHA-256 silicon, so a tab would earn shares this pool
+  could never turn into a block. The page prints **the pool's sentence**, because it carries dated
+  measurements that age and a paraphrase here would be a second copy that goes stale silently.
+
+### The stratum endpoint is REPORTED, and it used to be guessed
+
+The **stratum port** comes from the API (`stratumPort`), and it is honest about itself and useless
+as half of an address: it is the port micro-pool *binds*, the inside of a port mapping, on a
+listener bound to loopback by default.
+
+The **address a miner dials** is `stratumEndpoint` — `{ host, port }` or `null`, published together
+or not at all. This bundle used to derive the host from `window.location.hostname` and print
+`stratum+tcp://pool.<apex>:3334` on a public page. That endpoint **cannot connect**: this console
+arrives through a Cloudflare Tunnel and then Traefik, neither of which forwards a raw TCP stream, so
+the hostname a reader is looking at is provably not where stratum is. It was the worst available
+version of a plausible screen, because its owner debugs their own hardware for an evening instead of
+asking a question. micro-org#285; `resolveStratumHost` is deleted and `test/hosts.test.ts` holds the
+line.
+
+`null` is the ordinary answer and is the answer on this estate today, on both chains. The page
+renders it as a **named hole** — what is missing, who can fix it, and no connection string of any
+kind, not even one with a placeholder in it. A `<ask-an-operator>` inside a `<pre>` is still a
+command somebody edits and runs.
 
 ---
 
@@ -143,10 +183,90 @@ This image serves HTTP on 8080 and nothing else. `nginx.conf` has no `stream {}`
 `listen 3333`, `.github/workflows/ci.yml` fails the build if either appears, and the page tells the
 reader the port is raw TCP rather than letting them assume 443 works.
 
-`resolveStratumHost` in `src/lib/hosts.ts` derives the name from `window.location.hostname` and
-returns **`null`** when the placement is one it cannot derive from — the page then renders the
-absence rather than a plausible string. A wrong hostname in a miner's configuration costs its owner a
-silent outage they will blame on their hardware.
+A wrong hostname in a miner's configuration costs its owner a silent outage they will blame on their
+hardware, which is why this bundle no longer composes one — see the section above.
+
+---
+
+## What a miner types, and the two ways in
+
+The landing page is the authority and reads it live; this is the same thing in one place.
+
+**With your own hardware or a CPU miner.** Point it at the `stratumEndpoint` the pool published for
+the chain you want — plain TCP, and **there is no TLS on that port**: your worker name and your
+shares cross the network in the clear, and the HTTPS you read this console over is a different port
+and a different protocol.
+
+```
+cgminer -o stratum+tcp://<host>:<port> -u <your-address>.rig1 -p x
+```
+
+| Field | Value | Why |
+| --- | --- | --- |
+| Username | `<your-address>.<worker>` | Split on the **first** dot (`parseWorkerName`, `pool/src/session.ts`). A name with no dot is an account with one unnamed worker, which is an ordinary configuration and not a mistake. |
+| Password | anything — hardware sends `x` | Never read, never stored, never logged on this transport. |
+| Difficulty | set for you | Per connection, adjusted toward a steady share rate. A rig reporting difficulty 1 has not finished authorising. |
+
+**Your address is a label, not a payee.** The pool stores the username to group your shares. It
+does **not** validate it as an address on any chain and nothing will ever be sent to it — a typo is
+accepted silently, because there is no payment for it to break. That is the most likely way to
+misunderstand this pool, so it is on the page as well as here.
+
+**In a browser tab.** A different transport with a different credential, and **not on this
+surface**. It is Stratum over a WebSocket (`websocketEndpoint`), the username is ignored, and the
+password field carries a single-use ticket minted by `POST /v1/pool/ticket` against an estate
+access token — so work is credited to a pool account the service mints, not to an address you typed.
+The page that does it is **micro-hub-web's `/mine`**, behind the estate session. This console is
+anonymous, has no sign-in and no token store, and its readers are people without estate accounts.
+
+The difficulty bands differ by design: micro-pool starts a browser connection far lower than a
+hardware one, because at Litecoin's hardware floor a single share from a tab is on the order of
+tens of hours.
+
+---
+
+## Dogecoin is merge-mined from the Litecoin work
+
+**One share, two chains, no extra hashing** — and nothing for a miner to configure. A Dogecoin block
+has no nonce of its own: it is won by finding a *Litecoin* header whose scrypt hash meets Dogecoin's
+target, where that Litecoin block's coinbase carries a commitment naming the Dogecoin block being
+claimed (AuxPoW; `pool/src/auxpow.ts` and `pool/src/auxtemplate.ts`, and `pool/README.md` has the
+long form).
+
+So there is **no second address, no second port, no second worker and no extra hashrate**. A miner
+already pointed at Litecoin is already merge-mining, and solving a Litecoin block here can solve a
+Dogecoin one at the same instant. This is stated on the connection card precisely *because* it
+changes nothing a miner types: a reader who is told about DOGE and then given no configuration for
+it goes looking for the part they missed.
+
+It also changes nothing about payouts, which do not exist on either chain. See the top of this file.
+
+`merged` is the field, and its **three** states are rendered as three:
+
+| `merged` | Means | Page shows |
+| --- | --- | --- |
+| `null` | this deployment merge-mines nothing | nothing at all — silence is the honest answer |
+| `{ committed: true, … }` | the jobs in flight right now carry the commitment | "Committed into Litecoin work", plus the aux height and difficulty |
+| `{ committed: false, unavailability, … }` | an operator configured it and it is not happening | the reason, expanded into a sentence, and that Litecoin mining is unaffected |
+
+The middle state of that table is why the third exists. `committed` is read off micro-pool's live
+**job registry** rather than off its configuration, so it is a statement about work in flight and
+not about an intention — and nothing else on screen could tell the difference. A pool whose
+dogecoind is in initial block download mines Litecoin exactly as well as one whose dogecoind is
+healthy, reports the same hashrate, the same shares and the same workers, and simply stops being
+worth DOGE. A panel that showed "mining DOGE" for it would be telling a miner they are earning an
+asset they are not.
+
+`unavailability` is micro-pool's own vocabulary — `syncing`, `no-peers`, `refused`, `unreachable` —
+and `mergedUnavailability` in `src/lib/format.ts` expands each into what is actually true and, where
+it exists, how long it lasts. The difference between "wait" and "tell an operator" is the whole
+value of publishing the reason. An unrecognised word is rendered **verbatim inside a sentence**
+rather than dropped, so the service growing a fifth reason degrades to showing it.
+
+**On this estate today it is `null` on both chains.** The AuxPoW path is merged in micro-pool and
+`POOL_LTC_AUX_CHAINS` is unset, because dogecoind is still in initial block download — a node over a
+million blocks behind would hand miners an aux template for a chain nobody else is working on, and
+the Dogecoin half of every share would be worth nothing.
 
 ---
 
@@ -279,14 +399,26 @@ Stated here because they are stated on the site too, and the site is where they 
 * **TLS on the stratum port.** Not implemented. The port is plain TCP; the page says so.
 * **Solo and PPS.** Not offered. PPLNS is the only scheme, and it is the only one the share table
   supports.
-* **DOGE.** Refused by the service by name, with a reason. Merge-mining it against LTC is the only
-  sane way to do it and that is not what this pool does.
-* **The stratum hostname is derived, not reported.** `/v1/pool` exposes ports but no host, so this
-  bundle infers the name from the page's own address. If the estate ever exposes stratum under a
-  different name, this page will be confidently wrong; the fix is a field on `/v1/pool`, and
-  `resolveStratumHost` is the one place that changes.
-* **`network-site` still says no pool exists.** `network-site/src/content/copy.ts` predates this
-  service. That file is not this repository's to edit.
+* **No stratum endpoint is published on this estate.** `stratumEndpoint` is `null` on both chains,
+  so there is currently **no address an outside miner can dial** — the console says so in words
+  rather than guessing one. This is a deploy decision (the listener binds loopback and no public
+  host is set), not a defect in either repository, and it is the single thing standing between this
+  pool and an external miner.
+* **DOGE is built and switched off.** Merge-mining it against LTC is implemented — see the section
+  above — and `POOL_LTC_AUX_CHAINS` is unset while dogecoind is in initial block download. This
+  entry used to read "that is not what this pool does", which was true when it was written and has
+  been false since the AuxPoW work merged.
+
+Three entries have been **deleted rather than updated**, and are named here so nobody restores them
+from an old copy of this file:
+
+* *"Today only `ltc` is deployable — bitcoind is still syncing."* Both chains have been served since
+  2026-08-11.
+* *"The stratum hostname is derived, not reported."* `/v1/pool` reports `stratumEndpoint` and
+  `resolveStratumHost` is deleted (micro-org#285).
+* *"`network-site` still says no pool exists."* It says the opposite now: it names both chains, says
+  Dogecoin is merge-mined from the Litecoin work, and links to this console through the surface
+  registry.
 
 ---
 
@@ -296,3 +428,11 @@ Written against `pool/src/server.ts`, `pool/src/env.ts`, `pool/src/blocks.ts` an
 `pool/src/payouts.ts` as they stood on 2026-08-09, and against `ui/packages/ui/src/surfaces.ts`,
 `tokens.css` and `index.tsx` at the same date. Conventions were taken from `explorer-web`,
 `status-web` and `lantern-web` rather than invented.
+
+Re-read against the same files plus `pool/src/auxpow.ts`, `pool/src/auxtemplate.ts` and
+`pool/src/session.ts` on **2026-08-11**, and against the LIVE service rather than the repository:
+`GET https://pool.cloudsforge.online/v1/pool`, which is where the chain table, the `merged: null`
+and the absent `stratumEndpoint` above were read from. Every dated claim in this file is a
+measurement; if one is old, re-take it rather than reasoning about it — the three deletions in
+*Known gaps* are all cases of a claim that was true when written and stayed in the file after it
+stopped being true.
