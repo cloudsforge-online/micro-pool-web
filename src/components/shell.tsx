@@ -52,17 +52,20 @@ import {
   CookieBanner,
   MainRegion,
   MiningControl,
+  NetworkSwitcher,
   SkipLink,
+  TestnetBand,
   miningOnHub,
 } from '@cloudsforge/ui'
 import { applyHead, surfaceMeta } from '@cloudsforge/ui/seo'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { surface } from '@cloudsforge/ui/surfaces'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { hosts, placementIsKnown, PRODUCT, SURFACE_DESCRIPTION } from '../lib/hosts.ts'
 import { NAV, ROUTES } from '../lib/routes.ts'
 import { usePoolStatus } from '../lib/status.tsx'
 import { NotPaidNotice, UnregisteredNotice } from './notices.tsx'
+import { setViewedNetwork, viewedNetwork, type ViewedNetwork } from '../lib/viewed.ts'
 
 /**
  * The surface's own name, READ OFF THE REGISTRY rather than typed here.
@@ -74,6 +77,10 @@ import { NotPaidNotice, UnregisteredNotice } from './notices.tsx'
 export const SURFACE_NAME = surface(PRODUCT).name
 
 export function AppShell() {
+  // The viewed network: in-tab memory, defaulting to the hostname's own (micro-org#459).
+  // `setViewedNetwork` runs first in the handler below so the remounted tree reads the new value
+  // on its very first render.
+  const [viewed, setViewed] = useState<ViewedNetwork>(viewedNetwork())
   const { payoutsImplemented } = usePoolStatus()
   const known = placementIsKnown()
   const estate = hosts()
@@ -89,6 +96,12 @@ export function AppShell() {
 
       <DocumentMeta />
 
+      {/*
+        The amber band, mounted directly for the same reason the switcher below is. It follows the
+        SELECTED network rather than the hostname, which is the property that makes viewing the
+        other estate safe: testnet numbers under a mainnet address bar are never unmarked.
+      */}
+      <TestnetBand network={viewed} />
       <header className="pl-head">
         <div className="pl-head__inner">
           <a className="pl-head__logo" href={estate.site} aria-label="CloudsForge home">
@@ -114,6 +127,25 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
+          {/*
+            THE NETWORK SWITCHER, MOUNTED DIRECTLY, FOR THE SAME REASON THIS HEADER IS.
+
+            `CloudsForgeBar` is out of this surface on the grounds set out at the top of this file,
+            and it is the bar that normally carries this control — so leaving it to the bar would
+            have meant this surface alone could not be read on the other network (micro-org#459).
+            It hides itself off-registry, so a local stack sees nothing.
+
+            `onSelect` rather than a navigation: the choice re-points what this page READS through
+            `lib/viewed.ts`, and the `key` on the Outlet below remounts the tree so the request is
+            actually made again. Nothing is stored — module memory, per tab.
+          */}
+          <NetworkSwitcher
+            selected={viewed}
+            onSelect={(n) => {
+              setViewedNetwork(n)
+              setViewed(n)
+            }}
+          />
           {/*
             BROWSER MINING, IN THE POSITION THE ACCOUNT OCCUPIES EVERYWHERE ELSE.
 
@@ -156,7 +188,7 @@ export function AppShell() {
           service is unreachable, which is argued in `src/lib/status.tsx`.
         */}
         {!payoutsImplemented && <NotPaidNotice />}
-        <Outlet />
+        <Outlet key={viewed} />
       </MainRegion>
 
       {/*
