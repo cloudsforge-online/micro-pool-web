@@ -30,6 +30,7 @@
  */
 import { cloudsforgeHosts, type CloudsForgeHosts, type SurfaceKey } from '@cloudsforge/ui'
 import { envLabel, splitEnvLabel, surface } from '@cloudsforge/ui/surfaces'
+import { viewedApiOrigin } from './viewed.ts'
 
 /**
  * The surface this application IS.
@@ -196,9 +197,21 @@ export function hosts(): CloudsForgeHosts {
   return cloudsforgeHosts()
 }
 
-/** This app's API base, resolved now. Call it per request; never cache it in a module constant. */
+/**
+ * This app's API base, resolved now. Call it per request; never cache it in a module constant.
+ *
+ * Two layers, and they answer two different questions. `resolveApiBase` answers "is this a
+ * development stack?" — the only case where the pool API is somewhere other than this origin —
+ * and it stays a pure function of the hostname so `test/hosts.test.ts` can pin it without a
+ * browser. `viewedApiOrigin()` answers "is the reader looking at the other network?" and is `''`
+ * until they touch the switcher (micro-org#459), so in production this is the empty string and
+ * every request stays relative exactly as before.
+ *
+ * The order matters. A local stack has no sibling estate to view — `NetworkSwitcher` hides itself
+ * off-registry — so the dev port wins outright and `viewedApiOrigin()` is never consulted there.
+ */
 export function apiBase(): string {
-  return resolveApiBase(typeof window === 'undefined' ? '' : window.location.hostname)
+  return resolveApiBase(typeof window === 'undefined' ? '' : window.location.hostname) || viewedApiOrigin()
 }
 
 /** The page origin, or a stable placeholder when there is no document (tests, prerender). */
