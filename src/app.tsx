@@ -42,6 +42,14 @@
  * its own provider silently returns the default. `unknown` is a safe default — it renders a loading
  * state — which is exactly why the ordering has to be asserted rather than trusted to fail loudly.
  * micro-org#406.
+ *
+ * ── AND `ViewedNetworkProvider` WRAPS BOTH, WHICH IS THE THIRD LAYER OF THE SAME ARGUMENT ─────
+ *
+ * It answers the question that comes before BOTH of theirs: WHICH NETWORK is being read. Since
+ * micro-org#459 that is the reader's choice rather than the hostname's, and the switcher that makes
+ * it lives in `AppShell` — below everything here. So the choice is held above them and both
+ * subscribe to it; `src/lib/viewing.tsx` has the measurement that made this necessary and the
+ * reason a plain `useState` in the shell could not work.
  */
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import type { ReactElement } from 'react'
@@ -49,6 +57,7 @@ import { ScrollToTop } from './components/scroll-to-top.tsx'
 import { AppShell } from './components/shell.tsx'
 import { DeploymentProvider, usePoolApi } from './lib/deployment.tsx'
 import { PoolStatusProvider } from './lib/status.tsx'
+import { ViewedNetworkProvider } from './lib/viewing.tsx'
 import { BlocksPage } from './pages/blocks.tsx'
 import { MinePage } from './pages/mine.tsx'
 import { NoPoolPage } from './pages/no-pool.tsx'
@@ -59,11 +68,13 @@ export function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
-      <DeploymentProvider>
-        <PoolStatusProvider>
-          <AppRoutes />
-        </PoolStatusProvider>
-      </DeploymentProvider>
+      <ViewedNetworkProvider>
+        <DeploymentProvider>
+          <PoolStatusProvider>
+            <AppRoutes />
+          </PoolStatusProvider>
+        </DeploymentProvider>
+      </ViewedNetworkProvider>
     </BrowserRouter>
   )
 }
@@ -90,6 +101,11 @@ export function App() {
  * which show their own loading state because `PoolStatusProvider` has not fetched anything yet.
  * The alternative, defaulting to the explanation until told otherwise, would flash "there is no
  * mining pool here" on every load of the pool's own console on mainnet.
+ *
+ * NOT ONE LINE OF THIS CHANGED when the in-place network view landed, and that is the point of
+ * putting the question in a provider. `usePoolApi()` answers for the network being VIEWED rather
+ * than for the container, so pressing Testnet on a mainnet console substitutes the same
+ * explanation, through the same branch, with no idea that anything moved.
  */
 function AppRoutes() {
   const poolApi = usePoolApi()

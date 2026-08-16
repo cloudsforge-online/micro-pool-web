@@ -47,12 +47,80 @@
  * most important thing to tell somebody before they follow it is that hashrate pointed at it earns
  * nothing. Suppressing the notice here would remove it from the one page whose reader is about to
  * act on it.
+ *
+ * ── AND SINCE micro-org#459 THERE IS A THIRD READER, WHO DID NOT ARRIVE, THEY SWITCHED ────────
+ *
+ * The in-place network view means somebody can reach this page from a console that is working
+ * perfectly, by pressing Testnet on `pool.<apex>`. Everything above is written about a DEPLOYMENT
+ * with no pool behind it, and all of it is false for them: they are not on a different network,
+ * the page serving them has a pool, and `unlabelledPoolUrl()` is null because they are already on
+ * the unadorned estate — so the flat version of this page would have shown them "this network does
+ * not run a mining pool" with no way back except the header.
+ *
+ * What is TRUE for them is narrower, and the copy says only that: nothing answered on the network
+ * they switched to. Not "there is no pool there" — this bundle cannot see the difference between
+ * an estate that never brings one up and one that is down, because the edge's 502 for a missing
+ * container carries no CORS header and the browser cannot read its status (see
+ * `src/lib/deployment.tsx`). The action is the honest one and costs no navigation: switch back.
  * ════════════════════════════════════════════════════════════════════════════════════════════════
  */
 import { HUB_MINE_PATH } from '@cloudsforge/ui'
 import { hosts, unlabelledPoolUrl } from '../lib/hosts.ts'
+import { useViewing } from '../lib/viewing.tsx'
+
+/** How each network is named to a reader. The switcher's own labels, so the two agree on screen. */
+const NETWORK_NAME = { mainnet: 'the main network', testnet: 'the test network' } as const
 
 export function NoPoolPage() {
+  const { away, network, serving, choose } = useViewing()
+  if (away) return <ViewedElsewhere viewed={network} serving={serving} choose={choose} />
+  return <NoPoolHere />
+}
+
+/**
+ * The reader switched to another network and it did not answer.
+ *
+ * Deliberately shorter than the page below: there is one fact, one reason it might be either of
+ * two things, and one control. The "you can still mine EMBER" section is not repeated here because
+ * the link it carries goes to the SERVING estate's Forge Hub — true, but an answer to a question
+ * this reader did not ask, and the Chanel rule applies to pages as well as outfits.
+ */
+function ViewedElsewhere({
+  viewed,
+  serving,
+  choose,
+}: {
+  viewed: 'mainnet' | 'testnet'
+  serving: 'mainnet' | 'testnet' | null
+  choose: (network: 'mainnet' | 'testnet') => void
+}) {
+  return (
+    <div className="pl-page">
+      <h1 className="pl-title">No mining pool answered on {NETWORK_NAME[viewed]}</h1>
+      <p className="pl-lede">
+        You are viewing {NETWORK_NAME[viewed]} from a console served by{' '}
+        {serving === null ? 'another estate' : NETWORK_NAME[serving]}. Its pool API did not answer,
+        so there is no Stratum endpoint to show you, no share history and no blocks to list. A pool
+        is only brought up where a real node, a real chain and a real payout address all exist, so
+        the ordinary reason for this is that {NETWORK_NAME[viewed]} does not run one — but this page
+        cannot tell that apart from a pool that is down, and it will not guess.
+      </p>
+
+      {serving !== null && (
+        <p className="pl-cta">
+          {/* Not a link. Nothing moves: the reader is already on the right hostname and the only
+              thing that changed is what this console is reading. A navigation here would be the
+              teleport micro-org#459 was filed about, one page further along. */}
+          <button type="button" className="cf-btn cf-btn--ember" onClick={() => choose(serving)}>
+            Show the pool on {NETWORK_NAME[serving]}
+          </button>
+        </p>
+      )}
+    </div>
+  )
+}
+
+function NoPoolHere() {
   const elsewhere = unlabelledPoolUrl()
   const estate = hosts()
 
