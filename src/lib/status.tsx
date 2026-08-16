@@ -30,6 +30,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { apiBase } from './hosts.ts'
 import { fetchPool, type PoolChainStatus, type PoolStatus } from './pool.ts'
 import { lengthOf, useResource, type Resource } from './resource.ts'
+import { useViewing } from './viewing.tsx'
 
 export interface PoolStatusValue {
   readonly resource: Resource<PoolStatus>
@@ -51,6 +52,18 @@ export interface PoolStatusValue {
 const PoolStatusContext = createContext<PoolStatusValue | null>(null)
 
 export function PoolStatusProvider({ children }: { children: ReactNode }) {
+  /*
+   * ── WHY THIS PROVIDER SUBSCRIBES TO THE SWITCHER (micro-org#459, measured 2026-08-16) ────────
+   *
+   * `apiBase()` reads `viewedApiOrigin()` from module scope, so it already answers correctly the
+   * moment the reader switches. What it cannot do is cause this component to ASK again — and this
+   * provider is mounted in `src/app.tsx` above the shell that holds the switcher, so nothing about
+   * a click reached it. Measured on mainnet: pressing Testnet flipped the amber band and the
+   * address bar and left every number on the page mainnet's, because the one component holding
+   * them never re-rendered. `useViewing()` is the subscription; `network` is in the dependency
+   * list below beside `base` so the reason survives a refactor that happens to keep `base` equal.
+   */
+  const { network } = useViewing()
   const base = apiBase()
   /*
    * ── THE REQUEST BELOW IS NOT ALWAYS MADE, AND THAT IS DECIDED ELSEWHERE (micro-org#406) ──────
@@ -75,7 +88,7 @@ export function PoolStatusProvider({ children }: { children: ReactNode }) {
     // throw here and take the whole tree down with it, honesty notice included. See its header.
     (status) => lengthOf(status?.chains),
     'Could not reach the pool.',
-    [base],
+    [base, network],
   )
 
   const value = useMemo<PoolStatusValue>(

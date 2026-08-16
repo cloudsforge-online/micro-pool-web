@@ -58,14 +58,14 @@ import {
   miningOnHub,
 } from '@cloudsforge/ui'
 import { applyHead, surfaceMeta } from '@cloudsforge/ui/seo'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { surface } from '@cloudsforge/ui/surfaces'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { hosts, placementIsKnown, PRODUCT, SURFACE_DESCRIPTION } from '../lib/hosts.ts'
 import { NAV, ROUTES } from '../lib/routes.ts'
 import { usePoolStatus } from '../lib/status.tsx'
 import { NotPaidNotice, UnregisteredNotice } from './notices.tsx'
-import { setViewedNetwork, viewedNetwork, type ViewedNetwork } from '../lib/viewed.ts'
+import { useViewing } from '../lib/viewing.tsx'
 
 /**
  * The surface's own name, READ OFF THE REGISTRY rather than typed here.
@@ -77,10 +77,19 @@ import { setViewedNetwork, viewedNetwork, type ViewedNetwork } from '../lib/view
 export const SURFACE_NAME = surface(PRODUCT).name
 
 export function AppShell() {
-  // The viewed network: in-tab memory, defaulting to the hostname's own (micro-org#459).
-  // `setViewedNetwork` runs first in the handler below so the remounted tree reads the new value
-  // on its very first render.
-  const [viewed, setViewed] = useState<ViewedNetwork>(viewedNetwork())
+  /*
+   * THE VIEWED NETWORK IS NOT THIS COMPONENT'S STATE, AND IT USED TO BE.
+   *
+   * `useState(viewedNetwork())` here, with `<Outlet key={viewed} />` below, re-pointed the PAGES
+   * and nothing else — and the two things that hold this surface's reads, `DeploymentProvider` and
+   * `PoolStatusProvider`, are mounted above this shell in `src/app.tsx`. So a click changed the
+   * banner and the address bar while every number stayed on the serving estate. Measured on
+   * mainnet, 2026-08-16; the whole account is in `src/lib/viewing.tsx`.
+   *
+   * The `key` on the Outlet stays. It is what makes the pages' own resources re-issue — the
+   * providers cover the shared status, not `/v1/pool/blocks` or a worker lookup.
+   */
+  const { network: viewed, choose } = useViewing()
   const { payoutsImplemented } = usePoolStatus()
   const known = placementIsKnown()
   const estate = hosts()
@@ -136,16 +145,11 @@ export function AppShell() {
             It hides itself off-registry, so a local stack sees nothing.
 
             `onSelect` rather than a navigation: the choice re-points what this page READS through
-            `lib/viewed.ts`, and the `key` on the Outlet below remounts the tree so the request is
-            actually made again. Nothing is stored — module memory, per tab.
+            `lib/viewed.ts`. `choose` writes that module and then re-renders every subscriber —
+            the two providers above this shell included, which is the part that was missing.
+            Nothing is stored — module memory, per tab.
           */}
-          <NetworkSwitcher
-            selected={viewed}
-            onSelect={(n) => {
-              setViewedNetwork(n)
-              setViewed(n)
-            }}
-          />
+          <NetworkSwitcher selected={viewed} onSelect={choose} />
           {/*
             BROWSER MINING, IN THE POSITION THE ACCOUNT OCCUPIES EVERYWHERE ELSE.
 
