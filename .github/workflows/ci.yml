@@ -217,7 +217,10 @@ jobs:
             echo "::error::unknown paths must 404; serve the shell through error_page 404 /index.html"
             exit 1
           fi
-          grep -q 'error_page 404 /index.html' <<<"$directives"
+          # `/pool/index.html` since wave 3d: the shell moved into the folder with the bundle, so
+          # `error_page 404 /index.html` would name a file the document root no longer holds and
+          # nginx would serve its own error page instead of the app's not-found screen.
+          grep -q 'error_page 404 /pool/index.html' <<<"$directives"
           echo "ok: unknown paths answer 404"
 
       - name: No credential can reach the image, and nothing is proxied
@@ -511,7 +514,7 @@ jobs:
 
           # The brand chrome is SERVED by the image, not merely committed to the repository.
           for asset in favicon-32x32.png favicon-192x192.png favicon-512x512.png og-1200x630.png; do
-            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080/$asset" || true)
+            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$BASE/$asset" || true)
             [ "$code" = "200" ] || { echo "::error::/$asset returned $code from the image"; fail=1; }
           done
 
