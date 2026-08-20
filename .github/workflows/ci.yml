@@ -547,6 +547,10 @@ jobs:
       - name: The deployment document is served, and the environment is what decides it
         run: |
           set -uo pipefail
+          # Same mount as the step above, and the same reason: this container serves nothing at the
+          # origin root, so every probe here is `$BASE`-relative. `/pool/deployment.json` is the
+          # document itself — it moved with the bundle because the bundle's own nginx serves it.
+          BASE=/pool
           fail=0
 
           probe() { # container-name, docker-run-args…
@@ -554,7 +558,7 @@ jobs:
             docker rm -f "$name" >/dev/null 2>&1 || true
             docker run -d --name "$name" -p 127.0.0.1:8081:8080 "$@" pool-web:ci >/dev/null
             for _ in $(seq 1 30); do
-              code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/ || true)
+              code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081$BASE" || true)
               [ "$code" = "200" ] && break
               sleep 1
             done
@@ -563,7 +567,7 @@ jobs:
 
           # ── a deployment that says nothing, i.e. every one that exists today ──────────────────
           probe ci-pool-web-default
-          got=$(curl -s -m 5 http://127.0.0.1:8081/deployment.json || true)
+          got=$(curl -s -m 5 "http://127.0.0.1:8081$BASE/deployment.json" || true)
           echo "  default: $got"
           case "$got" in
             *'"poolApi"'*) ;;
@@ -576,11 +580,11 @@ jobs:
           # each level, so a new location loses every inherited one silently. This one sets its own;
           # this is the check that it really did.
           for header in X-Content-Type-Options X-Frame-Options Referrer-Policy; do
-            curl -sI -m 5 http://127.0.0.1:8081/deployment.json | tr -d '\r' | grep -qi "^$header:" || {
+            curl -sI -m 5 "http://127.0.0.1:8081$BASE/deployment.json" | tr -d '\r' | grep -qi "^$header:" || {
               echo "::error::/deployment.json is missing $header"; fail=1; }
           done
           # JSON, not the `types { }` default and not the SPA shell.
-          ctype=$(curl -sI -m 5 http://127.0.0.1:8081/deployment.json | tr -d '\r' | grep -i '^content-type:' || true)
+          ctype=$(curl -sI -m 5 "http://127.0.0.1:8081$BASE/deployment.json" | tr -d '\r' | grep -i '^content-type:' || true)
           case "$ctype" in
             *application/json*) ;;
             *) echo "::error::/deployment.json is served as '${ctype:-nothing}'"; fail=1 ;;
@@ -589,7 +593,7 @@ jobs:
 
           # ── a deployment on a network with no pool, which is what compose will set ────────────
           probe ci-pool-web-absent -e POOL_API_PRESENCE=absent
-          got=$(curl -s -m 5 http://127.0.0.1:8081/deployment.json || true)
+          got=$(curl -s -m 5 "http://127.0.0.1:8081$BASE/deployment.json" || true)
           echo "  absent:  $got"
           case "$got" in
             *'"poolApi":"absent"'*) ;;
@@ -599,11 +603,11 @@ jobs:
 
           # ── and the flag changes nothing else about the container ────────────────────────────
           probe ci-pool-web-still -e POOL_API_PRESENCE=absent
-          for owned in / /workers /blocks; do
-            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081$owned" || true)
+          for owned in '' /workers /blocks; do
+            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081$BASE$owned" || true)
             [ "$code" = "200" ] || { echo "::error::$owned returned $code with the flag set"; fail=1; }
           done
-          code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/payouts || true)
+          code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8081$BASE/payouts" || true)
           [ "$code" = "404" ] || { echo "::error::/payouts returned $code with the flag set"; fail=1; }
           docker rm -f ci-pool-web-still >/dev/null 2>&1 || true
 
