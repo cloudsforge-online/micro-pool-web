@@ -11,19 +11,27 @@ import { after, before, test } from 'node:test'
 import { ApiError, api, noticeFor, REQUEST_TIMEOUT_MS } from '../src/lib/api.ts'
 import { installFetch, installWindow, json, removeWindow } from './browser-stubs.ts'
 import { errorBody, poolStatus } from './fixtures.ts'
+import { BASE } from '../src/lib/routes.ts'
 
 before(() => {
-  installWindow('https://pool.cloudsforge.online/')
+  installWindow('https://cloudsforge.online/pool/')
 })
 after(() => {
   removeWindow()
 })
 
 test('a relative base resolves against the page, which is what same-origin serving means', async () => {
+  // BOTH BASES, because the mount made them different answers. `''` still resolves at the ORIGIN
+  // ROOT — that is what a relative URL means and this asserts the function has not quietly changed
+  // — and `BASE` is what `apiBase()` actually returns in production since wave 3d. The first is the
+  // contract; the second is the caller. Before the mount they were the same string and one
+  // assertion covered both, which is exactly why the difference is worth pinning now.
   const stub = installFetch(() => json(200, poolStatus()))
   try {
     await api('', '/v1/pool')
-    assert.equal(stub.calls[0]?.url, 'https://pool.cloudsforge.online/v1/pool')
+    assert.equal(stub.calls[0]?.url, 'https://cloudsforge.online/v1/pool')
+    await api(BASE, '/v1/pool')
+    assert.equal(stub.calls[1]?.url, 'https://cloudsforge.online/pool/v1/pool')
   } finally {
     stub.restore()
   }

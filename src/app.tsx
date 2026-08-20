@@ -52,6 +52,8 @@
  * reason a plain `useState` in the shell could not work.
  */
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
+
+import { BASE } from './lib/routes.ts'
 import type { ReactElement } from 'react'
 import { ScrollToTop } from './components/scroll-to-top.tsx'
 import { AppShell } from './components/shell.tsx'
@@ -66,7 +68,7 @@ import { WorkersPage } from './pages/workers.tsx'
 
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={BASE}>
       <ScrollToTop />
       <ViewedNetworkProvider>
         <DeploymentProvider>

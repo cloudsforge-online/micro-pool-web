@@ -111,7 +111,10 @@ COPY deployment.inc.template /etc/nginx/templates/deployment.inc.template
 # looking at, where an empty field looks like the mechanism is broken.
 ENV POOL_API_PRESENCE=present
 
-COPY --from=build /app/dist /usr/share/nginx/html
+# Into a folder, because the surface is one — `/pool`, matching `base:` in vite.config.ts and
+# every `location` in nginx.conf. A bundle built for `/pool/assets/…` and copied to the document
+# root 404s on every asset while `GET /` answers 200 with a shell that cannot start.
+COPY --from=build /app/dist /usr/share/nginx/html/pool
 
 EXPOSE 8080
 

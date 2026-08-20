@@ -22,7 +22,7 @@ import { apiBase } from '../src/lib/hosts.ts'
 import { setViewedNetwork, viewedNetwork } from '../src/lib/viewed.ts'
 
 /** A real address on this surface, on the mainnet estate. */
-const PAGE = 'https://pool.cloudsforge.online/'
+const PAGE = 'https://cloudsforge.online/pool/'
 /** A development address: no sibling estate exists, so nothing here can point anywhere. */
 const DEV = 'http://localhost:5173/'
 
@@ -42,7 +42,9 @@ describe('the in-place network view', () => {
   it('starts on the network the hostname names, and says so', () => {
     at(PAGE, () => {
       assert.equal(viewedNetwork(), 'mainnet')
-      assert.equal(apiBase(), '')
+      // `/pool`, not `''`. Relative still, and same-origin still — the mount is a PATH under this
+      // estate, which is what wave 3d changed and what `apiBase()` composes rather than substitutes.
+      assert.equal(apiBase(), '/pool')
     })
   })
 
@@ -50,10 +52,11 @@ describe('the in-place network view', () => {
     at(PAGE, () => {
       setViewedNetwork('testnet')
       assert.equal(viewedNetwork(), 'testnet')
-      // `-testnet` on the API host, not a different path and not a different product. The web
-      // hostname is retired and 302s to its mainnet sibling; `/v1` on it is exempt and still
-      // answers from the testnet service, which is what makes this readable at all.
-      assert.equal(apiBase(), 'https://pool-testnet.cloudsforge.online')
+      // The TESTNET APEX plus this surface's mount. Two things changed in wave 3d and only one of
+      // them is about hostnames: the console moved to `<apex>/pool`, so the sibling's console is at
+      // `testnet.<apex>/pool` — origin from the switcher, path from the registry. The old value
+      // named `pool-testnet.<apex>`, a hostname the estate no longer serves a console on.
+      assert.equal(apiBase(), 'https://testnet.cloudsforge.online/pool')
     })
   })
 
@@ -62,7 +65,9 @@ describe('the in-place network view', () => {
       setViewedNetwork('testnet')
       setViewedNetwork('mainnet')
       assert.equal(viewedNetwork(), 'mainnet')
-      assert.equal(apiBase(), '')
+      // `/pool`, not `''`. Relative still, and same-origin still — the mount is a PATH under this
+      // estate, which is what wave 3d changed and what `apiBase()` composes rather than substitutes.
+      assert.equal(apiBase(), '/pool')
     })
   })
 

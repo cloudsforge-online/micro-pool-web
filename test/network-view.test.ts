@@ -46,9 +46,11 @@ import { poolBlocks, poolShares, poolStatus, poolWorkers } from './fixtures.ts'
 const app = () => createElement(App)
 
 /** The mainnet console: the estate that serves this bundle in the scenarios below. */
-const PAGE = 'https://pool.cloudsforge.online/'
+const PAGE = 'https://cloudsforge.online/pool/'
 /** The estate the reader switches to. `-testnet` on the API host; the web hostname is retired. */
-const TESTNET_API = 'pool-testnet.cloudsforge.online'
+// The testnet console is `testnet.<apex>/pool` since wave 3d, so the ORIGIN a cross-estate read
+// goes to is the testnet apex — the mount is a path under it, added by `apiBase()`.
+const TESTNET_API = 'testnet.cloudsforge.online'
 
 /** A mainnet estate with a pool, and a testnet estate with nothing behind `/v1`. */
 function routes(over: Routes = {}): Routes {
@@ -97,13 +99,13 @@ describe('the pool console follows the network the reader is viewing', () => {
       await switchTo(screen, 'Testnet')
 
       assert.ok(
-        testnetCalls(screen).some((url) => url === `https://${TESTNET_API}/v1/pool`),
+        testnetCalls(screen).some((url) => url === `https://${TESTNET_API}/pool/v1/pool`),
         `no request reached the testnet estate; the console asked: ${screen.api.wire
           .map((w) => w.url)
           .join(', ')}`,
       )
       // The whole point of the in-place view: the reader is still on the page they were on.
-      assert.equal(screen.window.location.hostname, 'pool.cloudsforge.online')
+      assert.equal(screen.window.location.hostname, 'cloudsforge.online')
     })
   })
 
@@ -138,7 +140,7 @@ describe('the pool console follows the network the reader is viewing', () => {
         `switching back asked nobody for the pool again: ${after.map((w) => w.url).join(', ')}`,
       )
       assert.doesNotMatch(screen.text(), /No mining pool answered/)
-      assert.equal(screen.window.location.hostname, 'pool.cloudsforge.online')
+      assert.equal(screen.window.location.hostname, 'cloudsforge.online')
       screen.clean('switching to testnet and back')
     })
   })

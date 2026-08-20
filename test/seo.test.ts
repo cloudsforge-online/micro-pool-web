@@ -29,7 +29,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { ENV_LABELS } from '@cloudsforge/ui/surfaces'
 import { SURFACE_DESCRIPTION } from '../src/lib/hosts.ts'
-import { NON_INDEX_PATHS } from '../src/lib/routes.ts'
+import { NON_INDEX_PATHS, publicPath } from '../src/lib/routes.ts'
 import { read, stripComments } from './sources.ts'
 
 const HTML = stripComments(read('index.html'), 'html')
@@ -94,14 +94,18 @@ test('the environment map catches BOTH hostname shapes', () => {
 })
 
 test('a non-mainnet hostname has no sitemap and refuses every crawler', () => {
-  const sitemap = NGINX.slice(NGINX.indexOf('location = /sitemap.xml'))
+  const sitemap = NGINX.slice(NGINX.indexOf('location = /pool/sitemap.xml'))
   assert.match(sitemap, /if \(\$cf_env\) \{ return 404; \}/)
-  const robots = NGINX.slice(NGINX.indexOf('location = /robots.txt'))
-  assert.match(robots, /if \(\$cf_env\) \{ return 200 'User-agent: \*\\nDisallow: \/\\n'; \}/)
-  // Mainnet allows everything and points at the sitemap. This is a public reference page whose
-  // entire purpose is that a stranger with an ASIC can find it.
-  assert.match(robots, /Allow: \//)
-  assert.match(robots, /Sitemap: \$scheme:\/\/\$host\/sitemap\.xml/)
+  // ── THE robots HALF MOVED TO micro-site, AND ITS ABSENCE IS WHAT IS ASSERTED NOW ───────────
+  //
+  // A crawler reads robots.txt at the ORIGIN ROOT and nowhere else, so `<apex>/pool/robots.txt` is
+  // a file nothing fetches. This surface disallowed nothing and declares no `noIndexPaths`, so
+  // there was nothing to carry — only the `Sitemap:` line, which micro-site announces, and the
+  // `$cf_env` refusal, which micro-site already had. A testnet apex answers `Disallow: /` and
+  // covers this surface by construction rather than by a second copy living where nothing reads it.
+  assert.doesNotMatch(NGINX, /location\s*=\s*\/robots\.txt/, 'this surface still serves a robots.txt')
+  assert.doesNotMatch(NGINX, /^Disallow:/m)
+  assert.doesNotMatch(NGINX, /Sitemap:/, 'a Sitemap: line survived in a document nothing fetches')
 })
 
 test('THE SITEMAP IS COMPOSED FROM $host, BECAUSE NOTHING HERE MAY NAME A HOSTNAME', () => {
@@ -109,10 +113,13 @@ test('THE SITEMAP IS COMPOSED FROM $host, BECAUSE NOTHING HERE MAY NAME A HOSTNA
   // `<loc>` — and nothing built in this repository is allowed to name a hostname, because one image
   // serves localhost, a preview deployment and both estates. nginx is the component that knows: it
   // has `$host` on every request.
-  const sitemap = NGINX.slice(NGINX.indexOf('location = /sitemap.xml'))
+  const sitemap = NGINX.slice(NGINX.indexOf('location = /pool/sitemap.xml'))
   assert.doesNotMatch(sitemap, /cloudsforge/)
+  // `publicPath()` rather than a literal `/${path}`: every `<loc>` carries the mount now, and
+  // composing it here the same way the app composes it is what keeps this test about the SITEMAP
+  // rather than about a string somebody typed twice.
   for (const path of ['', ...NON_INDEX_PATHS]) {
-    assert.ok(sitemap.includes(`$scheme://$host${path ? `/${path}` : ''}<`))
+    assert.ok(sitemap.includes(`$scheme://$host${publicPath(path)}<`), `no <loc> for ${publicPath(path)}`)
   }
   // NOT `sitemapXml()` from @cloudsforge/ui: the shared generator composes every sibling as
   // `<subdomain>.$host`, which is right on the marketing site where `$host` IS the apex. Here
@@ -126,7 +133,7 @@ test('the sitemap declares its own content type rather than letting nginx guess'
   // `types { }` empties the mime table FOR THIS LOCATION so `default_type` is what applies. Without
   // it nginx maps the `.xml` in the URI to `text/xml` from its own table and the `default_type`
   // line is inert — a declaration that reads as a decision and is not one.
-  const sitemap = NGINX.slice(NGINX.indexOf('location = /sitemap.xml'), NGINX.indexOf('location = /robots.txt'))
+  const sitemap = NGINX.slice(NGINX.indexOf('location = /pool/sitemap.xml'), NGINX.indexOf('location = /robots.txt'))
   assert.match(sitemap, /types \{ \}/)
   assert.match(sitemap, /default_type application\/xml;/)
 })

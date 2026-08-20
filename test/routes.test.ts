@@ -21,7 +21,7 @@
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { NAV, NON_INDEX_PATHS, ROUTES, workerPath } from '../src/lib/routes.ts'
+import { NAV, NON_INDEX_PATHS, ROUTES, publicPath, workerPath } from '../src/lib/routes.ts'
 import { read, stripComments } from './sources.ts'
 
 const nginx = stripComments(read('nginx.conf'), 'nginx')
@@ -78,9 +78,12 @@ test('WILDCARD IS NOT DECORATION: it is what decides the nginx form', () => {
 })
 
 test('NGINX ENUMERATES EVERY ROUTE, AND THE INDEX IS EXACT', () => {
-  // `location = /` and not `location /`: the prefix form would match every address on the surface
-  // and turn the whole "unknown paths answer 404" argument in nginx.conf's header into a comment.
-  assert.match(nginx, /location\s*=\s*\/\s*\{/, 'nginx.conf has no exact-match location for the index')
+  // `location = /pool` and not `location /pool`: the prefix form would match every address under
+  // the mount and turn the whole "unknown paths answer 404" argument in nginx.conf's header into a
+  // comment. BOTH spellings are required — a folder has a trailing-slash form a hostname root never
+  // had, and the 301 from the retired hostname lands on it.
+  assert.match(nginx, /location\s*=\s*\/pool\s*\{/, 'nginx.conf has no exact-match location for the index')
+  assert.match(nginx, /location\s*=\s*\/pool\/\s*\{/, 'nginx.conf does not serve the trailing-slash front door')
 
   for (const path of NON_INDEX_PATHS) {
     // The alternation form `location ~ ^/(workers|blocks)(/|$)` is one block for several routes, so
@@ -121,15 +124,21 @@ test('THE SPA FALLBACK IS ABSENT AND error_page IS PRESENT', () => {
     /try_files\s+\$uri\s+(\$uri\/\s+)?\/index\.html/,
     'nginx.conf has the SPA fallback, which makes "page not found" a 200 — see its own header',
   )
-  assert.match(nginx, /error_page\s+404\s+\/index\.html/)
+  // `/pool/index.html`: the shell moved into the folder with the bundle, and `error_page 404
+  // /index.html` would name a file the document root no longer holds — nginx would then serve its
+  // own error page instead of the app's not-found screen.
+  assert.match(nginx, /error_page\s+404\s+\/pool\/index\.html/)
 })
 
 test('the sitemap lists the routes a crawler should have, and NOT a miner’s address', () => {
-  const sitemap = nginx.slice(nginx.indexOf('location = /sitemap.xml'))
+  const sitemap = nginx.slice(nginx.indexOf('location = /pool/sitemap.xml'))
+  // `publicPath()` composes what the `<loc>` must say, mount and all, the same way the app composes
+  // it. The index is `/pool` and not `/pool/` — a trailing slash is the classic way one page
+  // acquires two addresses — so there is no special case for the empty path any more.
   for (const path of ['', ...NON_INDEX_PATHS]) {
     assert.ok(
-      sitemap.includes(`$host/${path}`) || (path === '' && sitemap.includes('<loc>$scheme://$host<')),
-      `/${path} is a route and is not in the sitemap`,
+      sitemap.includes(`$scheme://$host${publicPath(path)}<`),
+      `${publicPath(path)} is a route and is not in the sitemap`,
     )
   }
   // `/workers/<chain>/<account>` is unbounded and each entry is somebody's mining address.

@@ -40,6 +40,36 @@ export interface AppRoute {
  * There is deliberately no payouts page, no earnings page and no dashboard. Two of those would have
  * nothing to render and the third would imply the first two exist.
  */
+/**
+ * ── WHERE THIS BUNDLE IS MOUNTED ─────────────────────────────────────────────────────────────
+ *
+ * The pool console used to be a hostname. It is a FOLDER on the apex now: `/pool`, wave 3d of the
+ * consolidation argued in micro-deploy `docs/apex-consolidation.md`. The registry says the same
+ * thing in one line — `subdomain: ''`, `basePath: '/pool'`.
+ *
+ *   A ROUTER PATH is what `react-router` matches, relative to the mount: `workers`. Everything in
+ *     `ROUTES` below and every `<Link to>`. `basename` in `src/app.tsx` puts the prefix back.
+ *
+ *   A PUBLIC PATH is what the address bar shows and what a crawler is handed: `/pool/workers`.
+ *     Every `<loc>` in the sitemap and every `location` in `nginx.conf`.
+ *
+ * `publicPath()` is the one crossing and the only place `BASE` is concatenated.
+ *
+ * ── WHAT DOES NOT CARRY THIS PREFIX, AND WHY ─────────────────────────────────────────────────
+ *
+ * The stratum WebSocket. `hub-web` opens the URL micro-pool PUBLISHES from
+ * `POOL_WEBSOCKET_PUBLIC_ORIGIN`, which is an operator-set absolute address on `pool.<apex>` —
+ * the hostname whose API this plan deliberately leaves un-redirected. Nothing in this repository
+ * composes it and nothing here should start.
+ */
+export const BASE = '/pool'
+
+/** A router path as a public one. No trailing slash: the console is `/pool`, not `/pool/`. */
+export function publicPath(path: string): string {
+  const rooted = path.startsWith('/') ? path : `/${path}`
+  return rooted === '/' ? BASE : `${BASE}${rooted}`
+}
+
 export const ROUTES: readonly AppRoute[] = [
   { path: '', label: 'Mine here', wildcard: false },
   { path: 'workers', label: 'Workers', wildcard: true },

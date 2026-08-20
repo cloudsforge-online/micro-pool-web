@@ -49,7 +49,7 @@ function allRoutes(over: Routes = {}): Routes {
 const app = () => createElement(App)
 
 test('the landing page says what the pool will not do before it says how to connect', async () => {
-  await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes: allRoutes() }, async (screen) => {
+  await withScreen(app(), { url: 'https://cloudsforge.online/pool/', routes: allRoutes() }, async (screen) => {
     // The order is the argument. A page that opens with a stratum URL has asked for hashrate before
     // saying what happens to it.
     screen.before(
@@ -77,7 +77,7 @@ test('THE ENDPOINT ON SCREEN IS THE ONE THE API PUBLISHED, NOT THE ADDRESS OF TH
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: allRoutes({ 'GET /v1/pool': { body: poolStatus({ chains: [published(LTC, 4334)] }) } }),
     },
     async (screen) => {
@@ -99,7 +99,7 @@ test('WITH NO PUBLISHED ENDPOINT THE PAGE NAMES THE HOLE AND OFFERS NO CONNECTIO
   // endpoint is optional configuration and nothing has set it. A named hole rather than a plausible
   // screen — and a copy-pasteable command that cannot connect is the worst possible version of a
   // plausible screen, because its owner debugs their own hardware instead of asking a question.
-  await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes: allRoutes() }, async (screen) => {
+  await withScreen(app(), { url: 'https://cloudsforge.online/pool/', routes: allRoutes() }, async (screen) => {
     assert.ok(!screen.text().includes('stratum+tcp://'), 'a connection string was rendered anyway')
     assert.ok(!screen.text().includes('cgminer'), 'a command was rendered with a hole in it')
     assert.ok(!screen.text().includes('3334'), 'the bound port was offered as something to dial')
@@ -115,7 +115,7 @@ test('WITH NO PUBLISHED ENDPOINT THE PAGE NAMES THE HOLE AND OFFERS NO CONNECTIO
 test('served from an address the registry cannot place, the shell says so', async () => {
   await withScreen(
     app(),
-    { url: 'https://some-preview.example.net/', routes: allRoutes() },
+    { url: 'https://some-preview.example.net/pool/', routes: allRoutes() },
     async (screen) => {
       // A page whose every outbound link is silently wrong is worse than one that admits it does not
       // know where it is. This is now the WHOLE of what an unregistered placement affects: the
@@ -134,7 +134,7 @@ test('a pool serving ONE chain renders no chain selector', async () => {
   // of tabs would render an empty BTC panel for that whole period and then be wrong again the day a
   // third chain arrives. Everything on screen is drawn from what the API reported.
   // ══════════════════════════════════════════════════════════════════════════════════════════════
-  await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes: allRoutes() }, async (screen) => {
+  await withScreen(app(), { url: 'https://cloudsforge.online/pool/', routes: allRoutes() }, async (screen) => {
     assert.deepEqual(screen.allByRole('combobox'), [])
     assert.ok(screen.text().includes('Litecoin'))
     assert.ok(!screen.text().includes('Bitcoin'))
@@ -145,7 +145,7 @@ test('a pool serving two chains renders a selector and a panel for each', async 
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: allRoutes({
         'GET /v1/pool': {
           body: poolStatus({ chains: [published(LTC, 4334), published(BTC, 4333)] }),
@@ -186,7 +186,7 @@ test('A CONFIGURED MERGED CHAIN THAT IS NOT COMMITTING IS NEVER SHOWN AS ONE THA
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: allRoutes({
         'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(published(LTC, 4334), 'syncing')] }) },
       }),
@@ -219,7 +219,7 @@ test('a committing merged chain reports its own height and difficulty, and says 
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: allRoutes({
         'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(published(LTC, 4334))] }) },
       }),
@@ -259,7 +259,7 @@ test('a configured-but-broken merged chain still removes the absence, because th
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: allRoutes({
         'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(LTC, 'unreachable')] }) },
       }),
@@ -277,7 +277,7 @@ test('a pool with no aux chain says nothing about merged mining except that it i
   // The estate's own configuration on 2026-08-09 and the default everywhere. `merged: null` is not
   // `committed: false`: the first says nobody asked for it, the second says somebody did and it is
   // not working, and a page that collapsed them would invent an absence or hide a fault.
-  await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes: allRoutes() }, async (screen) => {
+  await withScreen(app(), { url: 'https://cloudsforge.online/pool/', routes: allRoutes() }, async (screen) => {
     const text = screen.text()
     assert.ok(text.includes('Refused by name, not missing'))
     assert.ok(!text.includes('Merged: '), 'a panel was rendered for a chain nothing is merged into')
@@ -294,7 +294,7 @@ test('THE BLOCKS PAGE CAN REACH A MERGE-MINED CHAIN, OR THE POOL WINS DOGE NOBOD
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/blocks',
+      url: 'https://cloudsforge.online/pool/blocks',
       routes: allRoutes({
         'GET /v1/pool': { body: poolStatus({ chains: [mergedWith(LTC)] }) },
         'GET /v1/pool/blocks': {
@@ -325,7 +325,7 @@ test('AN ACCEPTED BLOCK THAT LOST A REORG STOPS READING AS ACCEPTED', async () =
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   await withScreen(
     app(),
-    { url: 'https://pool.cloudsforge.online/blocks', routes: allRoutes() },
+    { url: 'https://cloudsforge.online/pool/blocks', routes: allRoutes() },
     async (screen) => {
       // PER ROW, not over the page. Every assertion here is about two facts appearing TOGETHER, and
       // a regex over the whole table would be satisfied by a page that rendered the words in
@@ -359,7 +359,7 @@ test('a pool configured to mine nothing says so instead of rendering an empty pa
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: allRoutes({ 'GET /v1/pool': { body: poolStatus({ chains: [] }) } }),
     },
     async (screen) => {
@@ -375,7 +375,7 @@ test('a pool nobody is mining reports zero, and the page says zero is the right 
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: allRoutes({ 'GET /v1/pool': { body: coldStatus() } }),
     },
     async (screen) => {
@@ -389,7 +389,7 @@ test('the fee is rendered as unknown when the service did not state one', async 
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       // `feeBasisPoints` absent from the body entirely, which is what a service that had made it
       // optional would send. A fee of 0% shown here would be this site choosing "free" on the
       // operator's behalf.
@@ -407,7 +407,7 @@ test('the fee is rendered as unknown when the service did not state one', async 
 test('the blocks page shows the rejections, with the node’s own words', async () => {
   await withScreen(
     app(),
-    { url: 'https://pool.cloudsforge.online/blocks', routes: allRoutes() },
+    { url: 'https://cloudsforge.online/pool/blocks', routes: allRoutes() },
     async (screen) => {
       assert.ok(screen.byRole('table', /Blocks this pool has submitted/))
       assert.ok(screen.text().includes('accepted'))
@@ -427,7 +427,7 @@ test('a pool that has never found a block says so as a normal state', async () =
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/blocks',
+      url: 'https://cloudsforge.online/pool/blocks',
       routes: allRoutes({ 'GET /v1/pool/blocks': { body: poolBlocks({ blocks: [] }) } }),
     },
     async (screen) => {
@@ -444,7 +444,7 @@ test('a failed read is a failure with a reference, never an empty result', async
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/blocks',
+      url: 'https://cloudsforge.online/pool/blocks',
       routes: allRoutes({
         'GET /v1/pool/blocks': {
           status: 503,
@@ -465,7 +465,7 @@ test('a miner’s record renders both difficulties, and names an unnamed worker'
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/workers/ltc/ltc1qexampleaddress',
+      url: 'https://cloudsforge.online/pool/workers/ltc/ltc1qexampleaddress',
       routes: allRoutes(),
     },
     async (screen) => {
@@ -492,13 +492,13 @@ test('a miner’s record renders both difficulties, and names an unnamed worker'
 test('the lookup box accepts a whole stratum username and navigates to the account', async () => {
   await withScreen(
     app(),
-    { url: 'https://pool.cloudsforge.online/workers', routes: allRoutes() },
+    { url: 'https://cloudsforge.online/pool/workers', routes: allRoutes() },
     async (screen) => {
       await screen.type(screen.byRole('textbox', /Mining address/), 'ltc1qexampleaddress.rig1')
       await screen.click(screen.byRole('button', /Show shares/))
       // Split on the FIRST dot, as micro-pool splits it. The string a reader has to hand is the one
       // in their miner's configuration; making them edit it is asking them to do the pool's parsing.
-      assert.equal(screen.window.location.pathname, '/workers/ltc/ltc1qexampleaddress')
+      assert.equal(screen.window.location.pathname, '/pool/workers/ltc/ltc1qexampleaddress')
       assert.ok(screen.api.matching('GET /v1/pool/workers').length > 0)
     },
   )
@@ -507,7 +507,7 @@ test('the lookup box accepts a whole stratum username and navigates to the accou
 test('an address the pool could never have stored is refused here, with a reason', async () => {
   await withScreen(
     app(),
-    { url: 'https://pool.cloudsforge.online/workers', routes: allRoutes() },
+    { url: 'https://cloudsforge.online/pool/workers', routes: allRoutes() },
     async (screen) => {
       await screen.type(screen.byRole('textbox', /Mining address/), 'not a valid address')
       await screen.click(screen.byRole('button', /Show shares/))
@@ -515,7 +515,7 @@ test('an address the pool could never have stored is refused here, with a reason
       // And nothing was asked for. A 400 in a panel reads as "the pool is broken" rather than as
       // "that is not a name".
       assert.deepEqual(screen.api.matching('GET /v1/pool/workers'), [])
-      assert.equal(screen.window.location.pathname, '/workers')
+      assert.equal(screen.window.location.pathname, '/pool/workers')
     },
   )
 })
@@ -523,7 +523,7 @@ test('an address the pool could never have stored is refused here, with a reason
 test('an unknown address renders the shell under a not-found page, with a way back', async () => {
   await withScreen(
     app(),
-    { url: 'https://pool.cloudsforge.online/payouts', routes: allRoutes() },
+    { url: 'https://cloudsforge.online/pool/payouts', routes: allRoutes() },
     async (screen) => {
       // `/payouts` specifically. It is the address somebody will try, and what it must not do is
       // resolve to something reassuring.
@@ -543,9 +543,9 @@ test('there is no sign-in anywhere on this site', async () => {
   // something; the one route an estate session unlocks at micro-pool is the browser-mining ticket,
   // and the page that spends it is micro-hub-web's `/mine` rather than anything on this surface.
   for (const url of [
-    'https://pool.cloudsforge.online/',
-    'https://pool.cloudsforge.online/workers/ltc/ltc1qexampleaddress',
-    'https://pool.cloudsforge.online/blocks',
+    'https://cloudsforge.online/pool/',
+    'https://cloudsforge.online/pool/workers/ltc/ltc1qexampleaddress',
+    'https://cloudsforge.online/pool/blocks',
   ]) {
     await withScreen(app(), { url, routes: allRoutes() }, async (screen) => {
       const text = screen.text().toLowerCase()
@@ -571,9 +571,9 @@ test('there is no sign-in anywhere on this site', async () => {
  */
 test('the chrome offers browser mining, on every page, as a link to the surface that holds it', async () => {
   for (const url of [
-    'https://pool.cloudsforge.online/',
-    'https://pool.cloudsforge.online/blocks',
-    'https://pool.cloudsforge.online/nothing-here',
+    'https://cloudsforge.online/pool/',
+    'https://cloudsforge.online/pool/blocks',
+    'https://cloudsforge.online/pool/nothing-here',
   ]) {
     await withScreen(app(), { url, routes: allRoutes() }, async (screen) => {
       // Addressed by role and name, per doc 22 §2.4.3. The name is matched exactly because the

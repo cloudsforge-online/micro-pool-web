@@ -17,6 +17,12 @@ import { defineConfig } from 'vite'
  * hostname happened to be current when the image was built.
  */
 export default defineConfig({
+  // WHERE ON ANY ORIGIN this bundle lives — the same string on localhost, on a preview deployment
+  // and on both estates, so it is not an environment and the rule above is not broken by it. It has
+  // to be a build-time constant because it goes in front of every hashed asset name in the emitted
+  // `index.html`, which is written once at build. The trailing slash is required by vite:
+  // `base: '/pool'` emits `/poolassets/index-a1b2.js`.
+  base: '/pool/',
   plugins: [react()],
   resolve: {
     // @cloudsforge/ui is a `link:` dependency, so its own node_modules holds a second copy of

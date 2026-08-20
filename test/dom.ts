@@ -57,6 +57,7 @@
 import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
 import type { ReactElement } from 'react'
+import { BASE } from '../src/lib/routes.ts'
 
 /* ── the globals a React tree touches ───────────────────────────────────────────────────────── */
 
@@ -98,13 +99,37 @@ const GLOBALS = [
   'CSS',
 ] as const
 
+/**
+ * The mount, taken off a path so a route key can be about the endpoint.
+ *
+ * Read from the registry through `BASE` rather than written here, so a surface that moves again —
+ * or one that never moved — needs no edit. Exact-prefix only: `/poolish` is not under `/pool`, and
+ * a `startsWith(BASE)` that did not check the boundary would eat the first five characters of a
+ * path that merely began with the same letters.
+ */
+function stripMount(pathname: string): string {
+  if (pathname === BASE) return '/'
+  return pathname.startsWith(`${BASE}/`) ? pathname.slice(BASE.length) : pathname
+}
+
 /* ── what went over the wire ────────────────────────────────────────────────────────────────── */
 
 export interface Wire {
   readonly method: string
   readonly url: string
-  /** Path and query only, so an assertion does not have to know which origin the page was on. */
+  /**
+   * Path and query only, WITH THE MOUNT STRIPPED, so an assertion does not have to know which
+   * origin the page was on or which folder the bundle is served from.
+   *
+   * Since wave 3d this bundle is `<apex>/pool`, so it asks for `/pool/v1/pool` where it used to ask
+   * for `/v1/pool`. That is a fact about where the CONSOLE lives, not about which endpoint it
+   * called — micro-pool still serves `/v1/pool` and the gateway strips the prefix before the
+   * service sees it. Every route key and every assertion in this repository is about the endpoint,
+   * so this stays the endpoint and {@link mountedPath} carries what actually went out.
+   */
   readonly path: string
+  /** The path exactly as the request was made, mount included. The one field that proves it. */
+  readonly mountedPath: string
   readonly headers: Readonly<Record<string, string>>
   readonly body: string | undefined
   /** The parsed JSON body, or undefined when there was not one. */
@@ -361,7 +386,11 @@ function tabbablesIn(doc: Document): Element[] {
 }
 
 export async function mount(element: ReactElement, options: MountOptions = {}): Promise<Screen> {
-  const url = options.url ?? 'https://pool.cloudsforge.online/'
+  // THE APEX PLUS THE MOUNT, since wave 3d. `BrowserRouter basename='/pool'` renders NOTHING when
+  // the address does not start with the mount — not an error, an empty tree — so a default of
+  // `pool.cloudsforge.online/` would make every scenario in this repository assert against a blank
+  // page. `assertMounted` catches that, which is how it was found rather than shipped.
+  const url = options.url ?? 'https://cloudsforge.online/pool'
   const win = new Window({ url })
   const doc = win.document as unknown as Document
 
@@ -440,7 +469,8 @@ export async function mount(element: ReactElement, options: MountOptions = {}): 
     const call: Wire = {
       method,
       url: raw,
-      path: `${parsed.pathname}${parsed.search}`,
+      path: `${stripMount(parsed.pathname)}${parsed.search}`,
+      mountedPath: `${parsed.pathname}${parsed.search}`,
       headers,
       body,
       json,

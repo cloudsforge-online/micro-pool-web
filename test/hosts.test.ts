@@ -61,8 +61,18 @@ test('THE REGISTRY KNOWS THIS SURFACE, WHICH IS WHAT RETIRED THE LOCAL CORRECTIO
   // The row `src/lib/hosts.ts` waited for. With it, `cloudsforgeHosts()` strips `pool.` correctly
   // and every sibling address on this page resolves one level up instead of one level too deep.
   const pool = surface(PRODUCT)
-  assert.equal(pool.subdomain, 'pool')
-  assert.equal(KNOWN_SUBS.has('pool'), true)
+  // ── THE ROW IS STILL HERE; WHAT IT SAYS CHANGED IN WAVE 3d ─────────────────────────────────
+  //
+  // The correction this test retired was a LOCAL copy of the registry, added when `pool.` was not a
+  // known first label. The row is what made it deletable, and the row now places this surface on
+  // the apex instead of on a hostname — so the assertion is about the row EXISTING and being
+  // authoritative, which is what it was always for, rather than about one value it happens to hold.
+  assert.equal(pool.subdomain, '')
+  assert.equal(pool.basePath, '/pool')
+  // `pool` is no longer a subdomain this estate serves, and KNOWN_SUBS must not claim it is:
+  // `cloudsforgeHosts()` strips known first labels to find the apex, so a stale entry would make
+  // `pool.example.dev` resolve its apex one level too shallow.
+  assert.equal(KNOWN_SUBS.has('pool'), false)
   // `servesUi` is what puts this surface in the shared footer's columns at all, and `inSwitcher:
   // false` is what keeps a mining pool out of the product switcher a signed-in customer opens.
   assert.equal(pool.servesUi, true)
@@ -111,7 +121,7 @@ test('the API base is same-origin everywhere except a local checkout', () => {
   // priority 500 and the API router matches host plus PathPrefix('/v1') at 600, which is the same
   // pairing explorer.<apex> already has with micro-indexer. So every request stays relative.
   assert.equal(resolveApiBase('pool.cloudsforge.online'), '')
-  assert.equal(resolveApiBase('pool-testnet.cloudsforge.online'), '')
+  assert.equal(resolveApiBase('testnet.cloudsforge.online'), '')
   // An unknown placement stays relative too, and that is a departure from explorer-web's version of
   // this function on purpose: there is no apex to build an absolute URL from, and an invented one
   // reaches a hostname that does not exist and reports itself as a network failure.
@@ -125,23 +135,23 @@ test('THE REGISTRY PLACES THIS SURFACE AT ITS OWN HOSTNAME, IN BOTH ENVIRONMENT 
   // `https://pool.pool.cloudsforge.online` — a name that does not resolve, on a page that renders
   // perfectly.
   assert.equal(
-    atPage('https://pool.cloudsforge.online/', () => hosts()[PRODUCT]),
-    'https://pool.cloudsforge.online',
+    atPage('https://cloudsforge.online/pool/', () => hosts()[PRODUCT]),
+    'https://cloudsforge.online/pool',
   )
-  assert.equal(atPage('https://pool.cloudsforge.online/', placementIsKnown), true)
+  assert.equal(atPage('https://cloudsforge.online/pool/', placementIsKnown), true)
 
   // The environment is a SUFFIX on the first label, never a second one. Cloudflare's Universal SSL
   // wildcard matches exactly one label, so `pool.testnet.cloudsforge.online` fails the handshake at
   // the edge before it reaches the estate — which is why the registry composes `pool-testnet`.
   assert.equal(
-    atPage('https://pool-testnet.cloudsforge.online/', () => hosts()[PRODUCT]),
-    'https://pool-testnet.cloudsforge.online',
+    atPage('https://testnet.cloudsforge.online/pool/', () => hosts()[PRODUCT]),
+    'https://testnet.cloudsforge.online/pool',
   )
-  assert.equal(atPage('https://pool-testnet.cloudsforge.online/', placementIsKnown), true)
+  assert.equal(atPage('https://testnet.cloudsforge.online/pool/', placementIsKnown), true)
   // And a testnet page composes TESTNET siblings. The failure this rules out is the quiet one: a
   // suffixed hostname resolving to the mainnet apex, where every link works and points at real
   // money. The registry's own header calls that out as worse than the defect it replaced.
-  assert.match(atPage('https://pool-testnet.cloudsforge.online/', () => hosts().site), /testnet/)
+  assert.match(atPage('https://testnet.cloudsforge.online/pool/', () => hosts().site), /testnet/)
 
   // A local checkout is always placed — the registry resolves every surface to a localhost port.
   assert.equal(atPage('http://localhost:5173/', placementIsKnown), true)
@@ -159,24 +169,24 @@ test('THE ONE ADDRESS THIS CONSOLE MAY POINT AWAY FROM ITSELF IS COMPOSED, NEVER
   // `test/no-build-time-config.test.ts` forbids, and it would agree with a wrong derivation.
   // ══════════════════════════════════════════════════════════════════════════════════════════════
   assert.equal(
-    unlabelledSurfaceUrl('pool-testnet.cloudsforge.online'),
-    'https://pool.cloudsforge.online',
+    unlabelledSurfaceUrl('testnet.cloudsforge.online'),
+    'https://cloudsforge.online/pool',
   )
   // Any environment, not just the one that prompted this. `staging` and `preview` are registry
   // labels too, and a rule written around the string "testnet" would be a fourth copy of the list.
   assert.equal(
-    unlabelledSurfaceUrl('pool-staging.cloudsforge.online'),
-    'https://pool.cloudsforge.online',
+    unlabelledSurfaceUrl('staging.cloudsforge.online'),
+    'https://cloudsforge.online/pool',
   )
   // The apex comes off the PAGE. An estate served from another domain gets its own pool, not this
   // one — the whole point of composing rather than hard-coding.
-  assert.equal(unlabelledSurfaceUrl('pool-dev.example.test'), 'https://pool.example.test')
+  assert.equal(unlabelledSurfaceUrl('dev.example.test'), 'https://example.test/pool')
   // Arriving on ANOTHER surface's labelled hostname still composes the POOL, because the subdomain
   // comes from `surface(PRODUCT)` and not from the address. That is what makes this correct on the
   // day some other console imports it.
   assert.equal(
     unlabelledSurfaceUrl('hub-testnet.cloudsforge.online'),
-    'https://pool.cloudsforge.online',
+    'https://cloudsforge.online/pool',
   )
 
   // ── AND EVERY CASE WHERE THE ANSWER IS NO LINK AT ALL ────────────────────────────────────────
@@ -197,10 +207,10 @@ test('THE ONE ADDRESS THIS CONSOLE MAY POINT AWAY FROM ITSELF IS COMPOSED, NEVER
   // The window-reading wrapper agrees with the pure function it wraps, which is the only part of
   // this that `src/pages/no-pool.tsx` actually calls.
   assert.equal(
-    atPage('https://pool-testnet.cloudsforge.online/', unlabelledPoolUrl),
-    'https://pool.cloudsforge.online',
+    atPage('https://testnet.cloudsforge.online/pool/', unlabelledPoolUrl),
+    'https://cloudsforge.online/pool',
   )
-  assert.equal(atPage('https://pool.cloudsforge.online/', unlabelledPoolUrl), null)
+  assert.equal(atPage('https://cloudsforge.online/pool/', unlabelledPoolUrl), null)
   assert.equal(atPage('http://localhost:4146/', unlabelledPoolUrl), null)
 })
 
@@ -213,7 +223,10 @@ test('AN ADDRESS THE REGISTRY CANNOT PLACE SAYS SO INSTEAD OF GUESSING', () => {
   // Another surface's hostname is not this one either: `hub` IS known, so the apex comes out right
   // and every link on the page works — but this bundle is not what belongs there, and saying so is
   // cheaper than leaving somebody to wonder why the pool is being served from the hub.
-  assert.equal(atPage('https://hub.cloudsforge.online/', placementIsKnown), false)
+  // `hub.<apex>` — and this one changed shape with wave 3d rather than changing answer. The console
+  // used to belong on `pool.<apex>`; it belongs on `<apex>/pool` now, so being served from ANY
+  // subdomain is being served from the wrong place, and `hub` is simply the clearest example.
+  assert.equal(atPage('https://hub.cloudsforge.online/pool/', placementIsKnown), false)
 })
 
 test('THE STRATUM HOSTNAME IS NOT DERIVED HERE, AND MUST NOT COME BACK', () => {
