@@ -30,6 +30,7 @@
  */
 import { cloudsforgeHosts, type CloudsForgeHosts, type SurfaceKey } from '@cloudsforge/ui'
 import { envLabel, splitEnvLabel, surface } from '@cloudsforge/ui/surfaces'
+import { BASE } from './routes.ts'
 import { viewedApiOrigin } from './viewed.ts'
 
 /**
@@ -136,10 +137,35 @@ export function isRegisteredPlacement(
   if (isLocal(hostname)) return true
   if (!pageOrigin) return true
   try {
-    return new URL(estate[PRODUCT]).origin === pageOrigin
+    if (new URL(estate[PRODUCT]).origin !== pageOrigin) return false
   } catch {
     return false
   }
+  // ── AND FOR AN APEX-MOUNTED SURFACE THAT COMPARISON PROVES NOTHING BY ITSELF ────────────────
+  //
+  // Wave 3d gave this surface an EMPTY subdomain, so `cloudsforgeHosts()` composes its URL as the
+  // page's own apex plus `/pool` — and the page's own apex is whatever hostname the page is on.
+  // The comparison above is therefore TRUE ON EVERY ORIGIN IN THE WORLD, including a preview
+  // deployment and somebody's tunnel, which is precisely what this function exists to catch. It
+  // did catch them until the mount, because `pool.<whatever>` never matched.
+  //
+  // What actually goes wrong on an unplaceable name has not changed: `cloudsforgeHosts()` derives
+  // the apex by stripping a KNOWN first label, so on `some-preview.example.net` the whole name
+  // becomes the apex and every SIBLING resolves one level too deep — `nimbus.some-preview.example.
+  // net`, the shared footer's legal links, the hub. This surface's own URL happening to look right
+  // is a coincidence of it having no subdomain, not evidence that the estate is where the page
+  // thinks it is.
+  //
+  // So the question is asked of the APEX rather than of this surface: a hostname is placeable when
+  // it is a bare two-label apex, or when its first label is one the registry can split. Same rule
+  // `unlabelledSurfaceUrl` below uses, and reusing it rather than restating it is what stops the
+  // two answering differently.
+  if (surface(PRODUCT).subdomain === '') {
+    const parts = hostname.split('.')
+    if (parts.length <= 2) return true
+    return splitEnvLabel(parts[0] ?? '') !== null
+  }
+  return true
 }
 
 /**
@@ -184,7 +210,21 @@ export function unlabelledSurfaceUrl(hostname: string): string | null {
   if (parts.length <= 2) return null
   if (splitEnvLabel(parts[0] ?? '') === null) return null
   const apex = parts.slice(1).join('.')
-  return `https://${envLabel(surface(PRODUCT).subdomain, '')}.${apex}`
+  // ── AN EMPTY SUBDOMAIN IS AN APEX, NOT A LABEL — AND A MOUNT COMES AFTER IT ─────────────────
+  //
+  // This read `https://${envLabel(subdomain, '')}.${apex}`, which was right while this surface
+  // owned `pool.<apex>`. Wave 3d made the console `<apex>/pool`, so `subdomain` is the empty string
+  // and `envLabel('', '')` is the empty string too — the old form composed `https://.cloudsforge.
+  // online`, a leading dot, an address that is not a hostname at all.
+  //
+  // The same composition micro-ui's `viewedSurfaceUrl` uses, and for the same reason: the label is
+  // OMITTED rather than emptied when there is none, and the `basePath` is appended after the host.
+  // A reader on `testnet.<apex>/pool` being told the pool runs elsewhere now gets
+  // `https://<apex>/pool` — the folder, not the bare apex, which would have landed them on the
+  // marketing site with no idea why.
+  const s = surface(PRODUCT)
+  const label = envLabel(s.subdomain, '')
+  return `https://${label ? `${label}.${apex}` : apex}${s.basePath ?? ''}`
 }
 
 /** This surface on the unadorned environment, resolved now, or null. See above for every null. */
@@ -209,9 +249,28 @@ export function hosts(): CloudsForgeHosts {
  *
  * The order matters. A local stack has no sibling estate to view — `NetworkSwitcher` hides itself
  * off-registry — so the dev port wins outright and `viewedApiOrigin()` is never consulted there.
+ *
+ * ── AND SINCE WAVE 3d THERE IS A THIRD QUESTION, WHICH IS NOT THE SECOND ────────────────────────
+ *
+ * `viewedApiOrigin()` answers WHICH ESTATE. `BASE` answers WHERE UNDER IT — `/pool`, because this
+ * bundle is a folder on the apex now. They are different questions and the `||` above could only
+ * ever carry one answer, so the mount is composed rather than substituted.
+ *
+ * Getting this wrong is not subtle in its cause and is invisible in its effect. If `resolveApiBase`
+ * returned the mount, it would be TRUTHY in production and `viewedApiOrigin()` would stop being
+ * consulted at all: the switcher would say Testnet while every read went on hitting mainnet. That
+ * is the shape micro-agora-web nearly shipped in wave 3c, and it is recorded there too.
+ *
+ * The dev branch returns early rather than composing, because `pnpm dev` runs micro-pool directly
+ * on its own port with no gateway in front of it — there is nothing there to strip `/pool` back
+ * off, so `localhost:41xx/pool/v1` would 404.
  */
 export function apiBase(): string {
-  return resolveApiBase(typeof window === 'undefined' ? '' : window.location.hostname) || viewedApiOrigin()
+  const dev = resolveApiBase(typeof window === 'undefined' ? '' : window.location.hostname)
+  if (dev) return dev
+  // `''` + `/pool` when reading this estate; the sibling's origin + `/pool` when reading the other.
+  // Both estates serve the console from the same folder.
+  return `${viewedApiOrigin()}${BASE}`
 }
 
 /** The page origin, or a stable placeholder when there is no document (tests, prerender). */

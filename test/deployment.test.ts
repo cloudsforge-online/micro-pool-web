@@ -2,7 +2,7 @@
  * ════════════════════════════════════════════════════════════════════════════════════════════════
  * THE DEPLOYMENT THAT HAS NO POOL BEHIND IT — micro-org#406.
  *
- * MEASURED, 2026-08-11. `https://pool-testnet.cloudsforge.online/` served this bundle with a 200
+ * MEASURED, 2026-08-11. `https://testnet.cloudsforge.online/pool/` served this bundle with a 200
  * and every `/v1/…` request under it answered 502, so `/`, `/workers` and `/blocks` each rendered
  * "The pool did not answer" with a **Try again** button that could never succeed. Three pages of an
  * incident that was not happening: micro-pool sits behind `profiles: ["pool"]` in
@@ -123,7 +123,10 @@ test('THE ANSWER IS SERVED BY THIS CONTAINER FROM ITS ENVIRONMENT, NOT BAKED INT
     /^ENV\s+POOL_API_PRESENCE=\S+/m,
     'the image has no default for POOL_API_PRESENCE; an unset variable makes nginx refuse to start',
   )
-  assert.match(nginx, /location\s*=\s*\/deployment\.json/, 'nginx serves no such address')
+  // `/pool/deployment.json` since wave 3d — the document moved with the bundle, because it is
+  // served BY the bundle's container and read same-origin from the page. A `location =
+  // /deployment.json` left at the root would be an address the gateway never routes here.
+  assert.match(nginx, /location\s*=\s*\/pool\/deployment\.json/, 'nginx serves no such address')
   assert.match(nginx, /include\s+\/etc\/nginx\/conf\.d\/deployment\.inc;/, 'the expansion is not included')
   assert.ok(
     !/templates\/deployment\.inc\.template\s+\/etc\/nginx\/conf\.d\//.test(dockerfile),
@@ -163,7 +166,7 @@ test('THE DEPLOYMENT PROVIDER IS MOUNTED ABOVE EVERYTHING THAT READS IT', () => 
  * ═══════════════════════════════════════════════════════════════════════════════════════════ */
 
 before(() => {
-  installWindow('https://pool-testnet.cloudsforge.online/')
+  installWindow('https://testnet.cloudsforge.online/pool/')
 })
 after(() => {
   removeWindow()
@@ -177,7 +180,7 @@ test('the document is read from THIS container, same-origin, and never from unde
   try {
     assert.equal(await fetchPresence(), 'absent')
     const url = new URL(stub.calls[0]?.url ?? '')
-    assert.equal(url.origin, 'https://pool-testnet.cloudsforge.online')
+    assert.equal(url.origin, 'https://testnet.cloudsforge.online')
     assert.equal(url.pathname, DEPLOYMENT_PATH)
     assert.ok(!url.pathname.startsWith('/v1'), 'the answer was asked of the service that is missing')
     assert.equal(stub.calls[0]?.method, 'GET')
@@ -271,7 +274,12 @@ function noPool(over: Routes = {}): Routes {
   }
 }
 
-const MEASURED = 'https://pool-testnet.cloudsforge.online'
+// The hostname those three addresses were measured on, RESPELLED. `pool-testnet.<apex>` is retired
+// under the combined view and the console is `<apex>/pool` since wave 3d, so the testnet console
+// lives at `testnet.<apex>/pool`. The measurement stands — what was rendering `Failed` was the
+// console on an estate with no pool behind it, and that is a property of the estate rather than of
+// the address it was reached at.
+const MEASURED = 'https://testnet.cloudsforge.online/pool'
 
 test('ON A NETWORK WITH NO POOL, EVERY CONSOLE PAGE EXPLAINS ITSELF INSTEAD OF FAILING', async () => {
   // The three addresses that were measured rendering `Failed` on 2026-08-11, plus the DEEP LINK
@@ -321,7 +329,7 @@ test('the explanation carries the two ways onward, and they are DERIVED addresse
     // naming an estate hostname is the build-time configuration
     // `test/no-build-time-config.test.ts` forbids.
     const elsewhere = screen.byRole('link', /Open the CloudsForge mining pool/)
-    assert.equal(elsewhere.getAttribute('href'), 'https://pool.cloudsforge.online')
+    assert.equal(elsewhere.getAttribute('href'), 'https://cloudsforge.online/pool')
     // And the prose makes the same claim the link does, from the same condition.
     assert.ok(screen.text().includes('runs on the main network'))
 
@@ -346,7 +354,7 @@ test('ON THE UNADORNED ENVIRONMENT THE SENTENCE STANDS WITHOUT A LINK BACK TO IT
   // an estate whose pool profile is genuinely off, which is what mainnet looked like before
   // 2026-08-09, or a misconfiguration; either way the honest rendering is the explanation on its
   // own. See `src/lib/hosts.ts`.
-  await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes: noPool() }, async (screen) => {
+  await withScreen(app(), { url: 'https://cloudsforge.online/pool/', routes: noPool() }, async (screen) => {
     assert.ok(screen.queryByRole('heading', /This network does not run a mining pool/))
     assert.equal(screen.queryByRole('link', /Open the CloudsForge mining pool/), null)
     // Nor does it CLAIM the pool is somewhere it cannot link to. "The pool runs on the main
@@ -383,7 +391,7 @@ test('WITH A POOL BEHIND IT, NOTHING ABOUT THIS CONSOLE CHANGES', async () => {
   ]
 
   for (const [what, routes] of sames) {
-    await withScreen(app(), { url: 'https://pool.cloudsforge.online/', routes }, async (screen) => {
+    await withScreen(app(), { url: 'https://cloudsforge.online/pool/', routes }, async (screen) => {
       assert.equal(
         screen.queryByRole('heading', /This network does not run a mining pool/),
         null,

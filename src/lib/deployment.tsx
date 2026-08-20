@@ -89,6 +89,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { REQUEST_TIMEOUT_MS } from './api.ts'
 import { pageOrigin } from './hosts.ts'
+import { BASE } from './routes.ts'
 import { viewedApiOrigin } from './viewed.ts'
 import { useViewing } from './viewing.tsx'
 
@@ -100,7 +101,7 @@ import { useViewing } from './viewing.tsx'
  * exists to report the absence of, so a `/v1` address would be answered by the 502 it is meant to
  * explain. `nginx.conf` serves it from this container, beside the bundle.
  */
-export const DEPLOYMENT_PATH = '/deployment.json'
+export const DEPLOYMENT_PATH = `${BASE}/deployment.json`
 
 /**
  * How long the console waits for its own container to answer a static string.
@@ -191,7 +192,7 @@ export async function fetchPresence(signal?: AbortSignal): Promise<'present' | '
  * merely "a route that happens to work", it is the only address on the sibling estate whose answer
  * is about the sibling estate.
  */
-const VIEWED_PROBE_PATH = '/v1/pool'
+const VIEWED_PROBE_PATH = `${BASE}/v1/pool`
 
 /**
  * Whether the estate the reader is VIEWING has a pool behind it — asked of the service itself.

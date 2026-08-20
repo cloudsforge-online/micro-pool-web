@@ -51,11 +51,11 @@ function loudRoutes(over: Routes = {}): Routes {
 
 /** Every address on this site, including one that does not exist. */
 const ADDRESSES = [
-  'https://pool.cloudsforge.online/',
-  'https://pool.cloudsforge.online/workers',
-  'https://pool.cloudsforge.online/workers/ltc/ltc1qexampleaddress',
-  'https://pool.cloudsforge.online/blocks',
-  'https://pool.cloudsforge.online/payouts',
+  'https://cloudsforge.online/pool/',
+  'https://cloudsforge.online/pool/workers',
+  'https://cloudsforge.online/pool/workers/ltc/ltc1qexampleaddress',
+  'https://cloudsforge.online/pool/blocks',
+  'https://cloudsforge.online/pool/payouts',
 ]
 
 /**
@@ -109,7 +109,7 @@ test('no address on this site names an amount a miner is owed', async () => {
 test('a miner’s own record carries no denominated amount at all', async () => {
   await withScreen(
     app(),
-    { url: 'https://pool.cloudsforge.online/workers/ltc/ltc1qexampleaddress', routes: loudRoutes() },
+    { url: 'https://cloudsforge.online/pool/workers/ltc/ltc1qexampleaddress', routes: loudRoutes() },
     async (screen) => {
       // Every column on this page is WORK — difficulty credited, difficulty achieved, shares,
       // hashrate — and none of it is denominated. A number beside an asset ticker on a miner's own
@@ -234,7 +234,7 @@ test('the absences list drops Payouts when payouts exist, and keeps the rest', a
   await withScreen(
     app(),
     {
-      url: 'https://pool.cloudsforge.online/',
+      url: 'https://cloudsforge.online/pool/',
       routes: loudRoutes({ 'GET /v1/pool': { body: poolStatus({ payoutsImplemented: true }) } }),
     },
     async (screen) => {

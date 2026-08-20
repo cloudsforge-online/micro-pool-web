@@ -21,7 +21,7 @@ import { installFetch, installWindow, json, removeWindow } from './browser-stubs
 import { poolBlocks, poolShares, poolStatus, poolWorkers } from './fixtures.ts'
 
 before(() => {
-  installWindow('https://pool.cloudsforge.online/')
+  installWindow('https://cloudsforge.online/pool/')
 })
 after(() => {
   removeWindow()

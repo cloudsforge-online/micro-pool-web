@@ -107,7 +107,9 @@ test('THE BAR IS OUT ON PRODUCT GROUNDS, AND THE SHELL STATES THEM WITHOUT CITIN
   // And the retired argument must not be left standing. `surface('pool')` resolves now; a comment
   // still blaming a missing row for the bar's absence is a reason a reader can disprove in ten
   // seconds, and a disprovable reason gets the decision reversed for the wrong cause.
-  assert.ok(surface('pool').subdomain === 'pool')
+  // Still resolving, and now placed on the apex rather than on a hostname — either way the row
+  // exists, which is the fact the retired argument denied.
+  assert.equal(surface('pool').basePath, '/pool')
   assert.ok(
     !/(missing|no) `?pool`? row[\s\S]{0,200}CloudsForgeBar/.test(header),
     'the shell still blames the registry for the bar being out; that gap is closed',

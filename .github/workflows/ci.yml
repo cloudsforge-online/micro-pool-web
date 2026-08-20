@@ -378,20 +378,40 @@ jobs:
       - name: The image serves the app, 404s what it does not own, and sends the headers it promises
         run: |
           set -uo pipefail
+          # WHERE THIS BUNDLE LIVES INSIDE ITS OWN CONTAINER. `/pool`, wave 3d. Prepended to each
+          # probe rather than written into it, so the routes below stay ROUTER paths — the same
+          # separation `src/lib/routes.ts` draws — and the mount is stated once.
+          BASE=/pool
           docker run -d --name ci-pool-web -p 127.0.0.1:8080:8080 pool-web:ci
           for _ in $(seq 1 30); do
-            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ || true)
+            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$BASE" || true)
             [ "$code" = "200" ] && break
             sleep 1
           done
-          [ "${code:-}" = "200" ] || { echo "::error::the image returned ${code:-no answer} for /"; docker logs --tail 60 ci-pool-web; exit 1; }
+          [ "${code:-}" = "200" ] || { echo "::error::the image returned ${code:-no answer} for $BASE"; docker logs --tail 60 ci-pool-web; exit 1; }
 
           fail=0
+
+          # THE TRAILING-SLASH FRONT DOOR, an address this surface did not used to have: the 301
+          # from the retired hostname lands on `/pool/`, so a 404 here would meet every reader
+          # arriving from a bookmark or an old link.
+          slash=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$BASE/" || true)
+          [ "$slash" = "200" ] || { echo "::error::$BASE/ returned $slash"; fail=1; }
+
+          # AND THE ORIGIN ROOT MUST BE EMPTY. Behind the gateway neither address reaches this
+          # container — both belong to micro-site — so these are invisible in production and
+          # immediate under `docker run`, which is where a wrong `base:` or a wrong `COPY`
+          # destination shows up first. An image built for `/pool` but copied to the document root
+          # answers 200 here and would shadow the marketing site the moment it deployed.
+          for at_root in / /robots.txt; do
+            got=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$at_root" || true)
+            [ "$got" = "404" ] || { echo "::error::mounted at $BASE and still answering $got for $at_root"; fail=1; }
+          done
 
           # Every route this app owns must survive a hard refresh. A miner pastes
           # /workers/<chain>/<address> into a chat window and somebody else opens it cold.
           for owned in /workers /workers/ltc/ltc1qexampleaddress /blocks; do
-            got=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$owned" || true)
+            got=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$BASE$owned" || true)
             [ "$got" = "200" ] || { echo "::error::$owned returned $got"; fail=1; }
           done
 
@@ -399,7 +419,7 @@ jobs:
           # real page and the status line tells the truth. `/payouts` is named explicitly: it is the
           # address somebody will guess, and 404 is the honest answer.
           for unknown in /payouts /earnings /nope/not/a/route /block; do
-            got=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$unknown" || true)
+            got=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$BASE$unknown" || true)
             [ "$got" = "404" ] || { echo "::error::$unknown returned $got; it must be 404"; fail=1; }
           done
           # NOT A PIPE INTO `grep -q` — the hazard this file already avoids with here-strings
@@ -413,7 +433,7 @@ jobs:
           # micro-hub-web#16 then failed here twice in a row with the build green in the same run.
           # Measured 2026-08-10 — micro-org#347. Capturing first leaves no pipe to close early, and
           # `case` is an exact glob rather than a regex.
-          shell_404=$(curl -s -m 5 http://127.0.0.1:8080/payouts || true)
+          shell_404=$(curl -s -m 5 "http://127.0.0.1:8080$BASE/payouts" || true)
           case "$shell_404" in
             *'<div id="root">'*) ;;
             *) echo "::error::the 404 did not serve the app shell"; fail=1 ;;
@@ -428,23 +448,38 @@ jobs:
             esac
           }
 
-          asset=$(curl -s http://127.0.0.1:8080/ | grep -oE '/assets/[^"]+\.js' | head -1)
-          for target in "http://127.0.0.1:8080/" "http://127.0.0.1:8080/blocks" "http://127.0.0.1:8080$asset"; do
+          # ── TAKE THE SRC AS VITE WROTE IT, NOT A SUBSTRING OF IT ────────────────────────────
+          #
+          # `grep -oE '/assets/…'` finds the RIGHT TEXT IN THE WRONG PLACE once the bundle is a
+          # folder: vite emits `src="/pool/assets/index-x.js"`, and `-o` restarts at successive
+          # offsets and treats each as a fresh start, so a leading `/` is not an anchor. It would
+          # hand back the path with the mount cut off; the probe would ask for `/assets/index-x.js`,
+          # nginx's `location /` would correctly 404 it, and the 404's `no-store` would be reported
+          # as "a hashed asset has the wrong Cache-Control". A correct server and a red build.
+          # Fixed in micro-trade-web first, on exactly this line.
+          shell_html=$(curl -s "http://127.0.0.1:8080$BASE" || true)
+          asset=$(tr '<' '\n' <<<"$shell_html" | sed -n 's/.* src="\([^"]*\.js\)".*/\1/p' | head -1)
+          case "$asset" in
+            "$BASE"/*) : ;;
+            "") echo "::error::no module script in the shell at $BASE"; exit 1 ;;
+            *) echo "::error::the shell's asset is '$asset', which does not start with $BASE"; exit 1 ;;
+          esac
+          for target in "http://127.0.0.1:8080$BASE" "http://127.0.0.1:8080$BASE/blocks" "http://127.0.0.1:8080$asset"; do
             check "$target" X-Content-Type-Options "nosniff" "$target"
             # SAMEORIGIN rather than DENY: this is a public reference surface and the Forge Network
             # site has a legitimate reason to embed it. The operator console uses DENY.
             check "$target" X-Frame-Options "SAMEORIGIN" "$target"
             check "$target" Referrer-Policy "strict-origin" "$target"
           done
-          check "http://127.0.0.1:8080/" Cache-Control "no-store" "the shell"
-          check "http://127.0.0.1:8080/blocks" Cache-Control "no-store" "an enumerated route"
+          check "http://127.0.0.1:8080$BASE" Cache-Control "no-store" "the shell"
+          check "http://127.0.0.1:8080$BASE/blocks" Cache-Control "no-store" "an enumerated route"
           check "http://127.0.0.1:8080$asset" Cache-Control "immutable" "a hashed asset"
 
           # THE RELEASE IS STAMPED. It is what pins an error report to the deploy that introduced it,
           # and it is the one thing in this image that identifies the artefact.
           # `case` on the captured body rather than a pipe into `grep -q`, for the reason given at
           # the 404 check above — micro-org#347.
-          release_meta=$(curl -s http://127.0.0.1:8080/ || true)
+          release_meta=$(curl -s "http://127.0.0.1:8080$BASE" || true)
           case "$release_meta" in
             *'name="cf-release" content="${{ github.sha }}"'*) ;;
             *) echo "::error::the release was not stamped into index.html"; fail=1 ;;
@@ -456,18 +491,19 @@ jobs:
           # coins are worth nothing.
           # `case` on the captured body rather than a pipe into `grep -q`, for the reason given at
           # the 404 check above — micro-org#347.
-          robots_testnet=$(curl -s -H 'Host: pool-testnet.cloudsforge.online' http://127.0.0.1:8080/robots.txt || true)
-          case "$robots_testnet" in
-            *'Disallow: /'*) ;;
-            *) echo "::error::a non-mainnet hostname does not refuse crawlers"; fail=1 ;;
-          esac
-          env404=$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H 'Host: pool-testnet.cloudsforge.online' http://127.0.0.1:8080/sitemap.xml || true)
+          # ── THE robots.txt PROBES ARE GONE, BECAUSE THE DOCUMENT IS ────────────────────────
+          #
+          # A crawler reads robots.txt at the ORIGIN ROOT, and this bundle is a folder now, so the
+          # one robots.txt on the apex is micro-site's. `site/test/routes.test.ts` asserts its
+          # contents; the `/robots.txt` 404 above asserts that THIS image does not serve a second
+          # one. Probing for `Allow: /` here would have been asserting the presence of a document
+          # this container must not have.
+          #
+          # The `$cf_env` refusal it used to check has not been lost — micro-site's robots.txt has
+          # an identical one, so a testnet apex answers `Disallow: /` and covers this surface by
+          # construction. The sitemap half below still belongs here and still runs.
+          env404=$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H 'Host: testnet.cloudsforge.online' "http://127.0.0.1:8080$BASE/sitemap.xml" || true)
           [ "$env404" = "404" ] || { echo "::error::a non-mainnet hostname served a sitemap ($env404)"; fail=1; }
-          robots_mainnet=$(curl -s http://127.0.0.1:8080/robots.txt || true)
-          case "$robots_mainnet" in
-            *'Allow: /'*) ;;
-            *) echo "::error::the mainnet hostname refuses crawlers; this surface exists to be found"; fail=1 ;;
-          esac
 
           # This public reference surface must NOT be kept out of an index.
           robots=$(curl -sI http://127.0.0.1:8080/ | tr -d '\r' | grep -ci '^X-Robots-Tag:' || true)
