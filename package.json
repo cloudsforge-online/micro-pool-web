@@ -1,6 +1,6 @@
 {
   "name": "@cloudsforge/pool-web",
-  "version": "2026.8.98",
+  "version": "2026.8.99",
   "packageManager": "pnpm@11.9.0",
   "private": true,
   "description": "The public front for the CloudsForge Stratum v1 mining pool: how to point a miner here, what the pool is doing, and a miner's own share history. It says on every page that nothing is paid out.",
